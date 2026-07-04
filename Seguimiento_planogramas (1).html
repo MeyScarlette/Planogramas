@@ -1,0 +1,2297 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+<meta http-equiv="Pragma" content="no-cache"/>
+<meta http-equiv="Expires" content="0"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Seguimiento de Planogramas</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+:root{
+  --bg:#F2F2F7;--surface:#FFFFFF;--border:#E5E5EA;
+  --text:#1C1C1E;--muted:#8E8E93;--accent:#007AFF;--accent-lt:#EAF2FF;
+  --pending-bg:#F2F2F7;--pending-txt:#636366;--pending-dot:#8E8E93;
+  --process-bg:#FFF3E0;--process-txt:#B25E00;--process-dot:#FF9500;
+  --done-bg:#E8F8ED;--done-txt:#1F8B3A;--done-dot:#34C759;
+  --blocked-bg:#FFEBEA;--blocked-txt:#D70015;--blocked-dot:#FF3B30;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display",'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased}
+
+/* TOPBAR (iOS light nav bar) */
+.topbar{background:rgba(249,249,249,.94);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;border-bottom:1px solid var(--border)}
+.topbar-brand{display:flex;align-items:center;gap:9px;color:var(--text);font-weight:700;font-size:15px}
+.topbar-brand svg{color:var(--accent)}
+.topbar-right{display:flex;gap:8px;align-items:center}
+.btn-sm{padding:6px 14px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:opacity .15s,transform .1s;font-family:inherit}
+.btn-sm:active{transform:scale(.97)}
+.btn-outline{background:transparent;border:1.5px solid var(--border);color:var(--text)}
+.btn-outline:hover{background:#F2F2F7}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{opacity:.9}
+
+/* AUTOSAVE INDICATOR */
+.autosave-indicator{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:5px 12px;border-radius:20px;transition:all .3s}
+.autosave-indicator.saving{background:rgba(255,149,0,.12);color:#B25E00}
+.autosave-indicator.saved{background:rgba(52,199,89,.12);color:#1F8B3A}
+.autosave-indicator.error{background:rgba(255,59,48,.12);color:#D70015}
+.autosave-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.autosave-indicator.saving .autosave-dot{background:#FF9500;animation:pulse-dot 1.2s infinite}
+.autosave-indicator.saved .autosave-dot{background:#34C759}
+.autosave-indicator.error .autosave-dot{background:#FF3B30}
+@keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.7)}}
+
+/* TABS (segmented control estilo iOS) */
+.tabs-nav{background:var(--bg);border-bottom:none;display:flex;padding:10px 16px;overflow-x:auto;gap:3px}
+.tab-btn{padding:9px 16px;font-size:13px;font-weight:600;color:#3C3C43;opacity:.68;border:none;background:transparent;cursor:pointer;border-radius:8px;white-space:nowrap;transition:all .15s;font-family:inherit}
+.tab-btn.active{color:var(--text);opacity:1;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.tab-btn:hover:not(.active){opacity:.9}
+.tab-pane{display:none}
+.tab-pane.active{display:block}
+
+/* STATS BAR */
+.stats-bar{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.stat-pill{display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-size:13px;font-weight:600}
+.stat-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.stat-pill.total{background:#F2F2F7;color:#3C3C43}
+.stat-pill.pending{background:var(--pending-bg);color:var(--pending-txt)}
+.stat-pill.process{background:var(--process-bg);color:var(--process-txt)}
+.stat-pill.done{background:var(--done-bg);color:var(--done-txt)}
+.stat-pill.blocked{background:var(--blocked-bg);color:var(--blocked-txt)}
+.progress-wrap{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted);font-weight:500}
+.progress-bar-outer{width:140px;height:7px;background:#E5E5EA;border-radius:9px;overflow:hidden}
+.progress-bar-inner{height:100%;background:linear-gradient(90deg,#34C759,#248A3D);border-radius:9px;transition:width .5s ease}
+.progress-pct{font-weight:700;color:#1F8B3A;font-size:14px;min-width:36px;text-align:right}
+
+/* TOOLBAR */
+.toolbar{padding:14px 24px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.search-wrap{position:relative;flex:1;min-width:200px;max-width:340px}
+.search-wrap svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none}
+.search-input{width:100%;padding:9px 12px 9px 34px;border:none;border-radius:10px;font-size:13px;background:#E9E9EB;color:var(--text);outline:none;font-family:inherit}
+.search-input:focus{box-shadow:0 0 0 2px var(--accent)}
+.filter-select{padding:9px 12px;border:none;border-radius:10px;font-size:13px;background:#E9E9EB;color:var(--text);outline:none;cursor:pointer;font-family:inherit}
+.filter-select:focus{box-shadow:0 0 0 2px var(--accent)}
+
+/* PRODUCT LIST (instead of cards grid) */
+.product-list-wrap{padding:0 24px 40px}
+.product-list{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.product-list-header{padding:12px 16px;background:#FAFAFA;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.product-item{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;gap:12px}
+.product-item:last-child{border-bottom:none}
+.product-item:hover{background:#FAFAFA}
+.product-item.active{background:var(--accent-lt);border-left:3px solid var(--accent)}
+.product-num{font-size:11px;font-weight:700;color:var(--muted);min-width:28px}
+.product-name{font-size:13.5px;font-weight:600;color:var(--text);flex:1}
+.product-resp{font-size:11.5px;color:var(--muted);font-weight:500}
+.product-pct{font-size:12px;font-weight:700;min-width:36px;text-align:right}
+.product-rev-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.empty-state{padding:60px 20px;text-align:center;color:var(--muted)}
+
+/* PRODUCT DETAIL PANEL */
+.detail-panel-overlay{position:fixed;inset:0;background:rgba(0,0,0,.32);z-index:150;display:none;align-items:flex-end;justify-content:center;padding:0}
+.detail-panel-overlay.open{display:flex}
+@media(min-width:640px){.detail-panel-overlay{align-items:center;padding:20px}}
+.detail-panel{background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;box-shadow:0 -8px 40px rgba(0,0,0,.14);display:flex;flex-direction:column}
+@media(min-width:640px){.detail-panel{border-radius:16px;max-height:88vh}}
+.detail-panel-header{padding:18px 20px 14px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;border-bottom:1px solid var(--border);position:sticky;top:0;background:#fff;z-index:1}
+.detail-panel-title{font-size:16px;font-weight:700;color:var(--text);line-height:1.3}
+.detail-panel-num{font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin-bottom:2px}
+.btn-close-detail{background:#E9E9EB;border:none;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;color:#3C3C43;font-size:16px;transition:background .12s}
+.btn-close-detail:hover{background:#DCDCE0;color:var(--text)}
+.detail-panel-body{padding:18px 20px;display:flex;flex-direction:column;gap:14px;flex:1}
+
+/* FIELDS in detail panel */
+.field-row{display:flex;align-items:center;gap:8px}
+.field-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;min-width:90px;flex-shrink:0}
+.field-input,.field-select,.field-date{flex:1;padding:7px 10px;border:none;border-radius:8px;font-size:13px;font-family:inherit;color:var(--text);background:#F2F2F7;outline:none;transition:box-shadow .15s;min-width:0}
+.field-input:focus,.field-select:focus,.field-date:focus{box-shadow:0 0 0 2px var(--accent)}
+.mini-bar-outer{flex:1;height:5px;background:#E5E5EA;border-radius:9px;overflow:hidden}
+.mini-bar-inner{height:100%;border-radius:9px;transition:width .3s ease}
+.pct-label{font-size:11.5px;font-weight:700;min-width:32px;text-align:right}
+.obs-input{width:100%;padding:9px 10px;border:none;border-radius:8px;font-size:13px;font-family:inherit;color:var(--text);background:#F2F2F7;resize:vertical;min-height:60px;outline:none;transition:box-shadow .15s}
+.obs-input:focus{box-shadow:0 0 0 2px var(--accent)}
+
+/* Badge */
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:600;white-space:nowrap;flex-shrink:0}
+.badge-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.badge.pending{background:var(--pending-bg);color:var(--pending-txt)}.badge.pending .badge-dot{background:var(--pending-dot)}
+.badge.process{background:var(--process-bg);color:var(--process-txt)}.badge.process .badge-dot{background:var(--process-dot)}
+.badge.done{background:var(--done-bg);color:var(--done-txt)}.badge.done .badge-dot{background:var(--done-dot)}
+.badge.blocked{background:var(--blocked-bg);color:var(--blocked-txt)}.badge.blocked .badge-dot{background:var(--blocked-dot)}
+
+/* Revision block */
+.revision-block{border-top:1px solid var(--border);padding-top:12px;display:flex;flex-direction:column;gap:7px}
+.revision-row{display:flex;align-items:center;gap:8px}
+.revision-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:700;flex-shrink:0}
+.rev-ok   {background:#E8F8ED;color:#1F8B3A}
+.rev-warn {background:#FFF3E0;color:#B25E00}
+.rev-late {background:#FFEBEA;color:#D70015}
+.rev-none {background:#F2F2F7;color:#8E8E93}
+.btn-rev-hoy{font-size:11px;font-weight:700;color:#fff;background:var(--accent);border:none;border-radius:999px;padding:5px 12px;cursor:pointer;font-family:inherit;flex-shrink:0;transition:background .15s}
+.btn-rev-hoy:hover{background:#0062CC}
+
+
+.detail-saved{font-size:12px;color:#34C759;font-weight:600;display:flex;align-items:center;gap:5px;opacity:0;transition:opacity .4s;margin-top:8px;justify-content:flex-end}
+.detail-saved.show{opacity:1}
+
+/* Fotos de respaldo colaborador */
+.btn-photo-colab{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:var(--accent-lt);color:var(--accent);border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s}
+.btn-photo-colab:hover{background:#D6E9FF}
+.colab-photos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px}
+.colab-photo-item{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--border);background:#F2F2F7;aspect-ratio:1;cursor:pointer}
+.colab-photo-item img{width:100%;height:100%;object-fit:cover;display:block;transition:opacity .15s}
+.colab-photo-item:hover img{opacity:.85}
+.colab-photo-delete{position:absolute;top:4px;right:4px;background:rgba(255,59,48,.92);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:13px;line-height:1;cursor:pointer;display:none;align-items:center;justify-content:center;font-weight:700}
+.colab-photo-item:hover .colab-photo-delete{display:flex}
+.colab-photo-date{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.55);color:#fff;font-size:9px;font-weight:600;padding:3px 5px;text-align:center}
+.colab-photo-empty{grid-column:1/-1;padding:16px;text-align:center;color:var(--muted);font-size:12px;border:1.5px dashed var(--border);border-radius:10px;background:#FAFAFA}
+
+/* Lightbox */
+.photo-lightbox{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:300;display:none;align-items:center;justify-content:center;padding:20px}
+.photo-lightbox.open{display:flex}
+.photo-lightbox img{max-width:100%;max-height:90vh;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.photo-lightbox-close{position:absolute;top:16px;right:20px;background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:50%;width:38px;height:38px;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.photo-lightbox-close:hover{background:rgba(255,255,255,.25)}
+.detail-saved.show{opacity:1}
+
+/* ── ASIGNACIÓN ── */
+.asign-wrap{padding:20px 24px 40px}
+.section-box{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:20px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.section-box-title{font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.add-plan-row{display:flex;gap:8px;flex-wrap:wrap}
+.add-plan-row input{flex:1;min-width:200px;padding:9px 12px;border:none;border-radius:10px;font-size:13px;outline:none;font-family:inherit;color:var(--text);background:#F2F2F7}
+.add-plan-row input:focus{box-shadow:0 0 0 2px var(--accent)}
+.btn-green{padding:9px 18px;border-radius:10px;background:#34C759;color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px}
+.btn-green:hover{background:#248A3D}
+
+/* ── Lista de planogramas (editar/eliminar) ── */
+.plan-list-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;background:#F7F7F9;border:1px solid var(--border)}
+.plan-list-name{flex:1;font-size:13px;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plan-list-actions{display:flex;gap:5px;flex-shrink:0}
+.plan-list-empty{font-size:12.5px;color:var(--muted);padding:6px 2px;font-style:italic}
+.btn-confirm{padding:9px 16px;border-radius:10px;background:var(--accent);color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.btn-confirm:hover{opacity:.9}
+
+/* ── CARDS GRID DE COLABORADORES ── */
+.asign-top-bar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:18px}
+.asign-top-bar h2{font-size:17px;font-weight:700}
+.btn-add-vend{display:flex;align-items:center;gap:6px;padding:9px 18px;border-radius:999px;background:var(--accent);color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s}
+.btn-add-vend:hover{background:#0062CC}
+.colab-cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:32px}
+.colab-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05);transition:box-shadow .15s}
+.colab-card:hover{box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.colab-card-header{padding:14px 16px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)}
+.colab-avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;flex-shrink:0;color:#fff}
+.colab-card-name-wrap{flex:1;min-width:0}
+.colab-card-name{font-size:14px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.colab-card-count{font-size:11px;color:var(--muted);font-weight:500;margin-top:1px}
+.colab-card-actions{display:flex;gap:5px;flex-shrink:0}
+.btn-edit-colab{background:var(--accent-lt);color:var(--accent);border:none;border-radius:8px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px;transition:background .12s}
+.btn-edit-colab:hover{background:#D6E9FF}
+.btn-del-colab{background:#FFEBEA;color:#FF3B30;border:none;border-radius:8px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px;transition:background .12s}
+.btn-del-colab:hover{background:#FFD9D6}
+.colab-card-body{padding:12px 16px 14px}
+.colab-tags{display:flex;flex-wrap:wrap;gap:5px;min-height:28px}
+.plan-tag{display:inline-flex;align-items:center;gap:4px;padding:3px 9px 3px 8px;border-radius:20px;font-size:11px;font-weight:600;background:#F2F2F7;color:#3C3C43;transition:background .12s}
+.plan-tag-del{background:none;border:none;color:#8E8E93;cursor:pointer;font-size:12px;line-height:1;padding:0 0 0 2px;transition:color .12s}
+.plan-tag-del:hover{color:#FF3B30}
+.colab-card-empty{font-size:12px;color:var(--muted);padding:4px 0;font-style:italic}
+.btn-assign{display:flex;align-items:center;gap:6px;margin-top:12px;width:100%;padding:8px 14px;border-radius:10px;background:var(--accent-lt);color:var(--accent);border:1.5px dashed #A9D2FF;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;justify-content:center}
+.btn-assign:hover{background:#D6E9FF;border-color:var(--accent)}
+
+/* ── MODAL ASIGNACIÓN RÁPIDA ── */
+.asign-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.32);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px;opacity:0;pointer-events:none;transition:opacity .2s}
+.asign-modal-backdrop.open{opacity:1;pointer-events:auto}
+.asign-modal{background:#fff;border-radius:18px;width:100%;max-width:520px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.18);transform:translateY(14px);transition:transform .2s}
+.asign-modal-backdrop.open .asign-modal{transform:translateY(0)}
+.asign-modal-head{padding:18px 20px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-shrink:0}
+.asign-modal-head h3{font-size:15px;font-weight:700;color:var(--text)}
+.asign-modal-head span{font-size:12px;color:var(--muted);font-weight:500}
+.btn-close-am{background:#E9E9EB;border:none;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#3C3C43;font-size:17px;transition:background .12s;flex-shrink:0}
+.btn-close-am:hover{background:#DCDCE0;color:var(--text)}
+.asign-modal-search{padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
+.am-search-input{width:100%;padding:9px 12px 9px 36px;border:none;border-radius:10px;font-size:13px;font-family:inherit;outline:none;background:#F2F2F7;color:var(--text);transition:box-shadow .15s}
+.am-search-input:focus{box-shadow:0 0 0 2px var(--accent)}
+.am-search-wrap{position:relative}
+.am-search-wrap svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none}
+.asign-modal-list{overflow-y:auto;flex:1;padding:10px 10px}
+.am-section-label{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;padding:6px 6px 4px;margin-top:4px}
+.am-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;cursor:pointer;transition:background .1s;user-select:none}
+.am-item:hover{background:#F2F2F7}
+.am-item.checked{background:var(--accent-lt)}
+.am-check{width:18px;height:18px;border-radius:5px;border:2px solid #C7C7CC;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .12s}
+.am-item.checked .am-check{background:var(--accent);border-color:var(--accent)}
+.am-check-icon{display:none;color:#fff}
+.am-item.checked .am-check-icon{display:block}
+.am-item-name{font-size:13px;font-weight:500;color:var(--text);flex:1}
+.am-item.checked .am-item-name{font-weight:700;color:var(--accent)}
+.am-empty{padding:24px;text-align:center;color:var(--muted);font-size:13px}
+.asign-modal-footer{padding:12px 16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-shrink:0;background:#FAFAFA}
+.am-footer-count{font-size:12.5px;color:var(--muted);font-weight:500}
+.am-footer-count strong{color:var(--text)}
+.btn-am-save{padding:9px 22px;border-radius:999px;background:#34C759;color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;transition:transform .1s,background .15s}
+.btn-am-save:hover{background:#248A3D}
+.btn-am-save:active{transform:scale(.97)}
+
+/* ── MODAL AGREGAR COLABORADOR ── */
+.add-colab-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.32);z-index:210;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity .2s}
+.add-colab-modal-backdrop.open{opacity:1;pointer-events:auto}
+.add-colab-modal{background:#fff;border-radius:16px;width:100%;max-width:400px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.18);transform:translateY(12px);transition:transform .2s}
+.add-colab-modal-backdrop.open .add-colab-modal{transform:translateY(0)}
+.add-colab-modal h3{font-size:16px;font-weight:700;margin-bottom:14px}
+.add-colab-input{width:100%;padding:10px 12px;border:none;border-radius:10px;font-size:14px;font-family:inherit;outline:none;color:var(--text);background:#F2F2F7;transition:box-shadow .15s;margin-bottom:14px}
+.add-colab-input:focus{box-shadow:0 0 0 2px var(--accent)}
+.add-colab-actions{display:flex;gap:8px;justify-content:flex-end}
+.btn-del-vend{background:#FFEBEA;color:#D70015;border:none;border-radius:8px;padding:4px 9px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
+
+/* ── CARD PLACEHOLDER (agregar nuevo) ── */
+.colab-card-add{border:2px dashed #C7C7CC;background:#FAFAFA;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;min-height:120px;border-radius:16px;transition:all .15s;color:var(--muted)}
+.colab-card-add:hover{border-color:var(--accent);background:var(--accent-lt);color:var(--accent)}
+.colab-card-add-icon{font-size:24px}
+.colab-card-add-label{font-size:13px;font-weight:600}
+
+/* save toast */
+.asign-toast{position:fixed;bottom:24px;right:24px;background:rgba(28,28,30,.92);backdrop-filter:blur(10px);color:#fff;padding:12px 20px;border-radius:14px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;box-shadow:0 8px 24px rgba(0,0,0,.2);opacity:0;pointer-events:none;transition:opacity .3s,transform .3s;transform:translateY(10px);z-index:300}
+.asign-toast.show{opacity:1;transform:translateY(0)}
+
+/* RESUMEN */
+.resumen-wrap{padding:20px 24px 40px}
+.resumen-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px}
+.resumen-header h2{font-size:17px;font-weight:700}
+.btn-print{display:flex;align-items:center;gap:6px;padding:9px 18px;border-radius:999px;background:var(--accent);color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.btn-print:hover{background:#0062CC}
+
+/* Campos editables resumen */
+.resumen-fields{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 20px;margin-bottom:18px;display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+.resumen-field-group{display:flex;flex-direction:column;gap:4px;flex:1;min-width:200px}
+.resumen-field-label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.resumen-field-input{padding:8px 11px;border:none;border-radius:8px;font-size:13px;font-family:inherit;color:var(--text);background:#F2F2F7;outline:none;transition:box-shadow .15s}
+.resumen-field-input:focus{box-shadow:0 0 0 2px var(--accent)}
+
+/* Documento único */
+.doc-wrap{background:#fff;border:1.5px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.07)}
+
+/* Cabecera del documento */
+.doc-title-block{background:#0F2140;color:#fff;padding:14px 22px 10px}
+.doc-title-block h3{font-size:16px;font-weight:800;letter-spacing:.5px;margin-bottom:4px}
+.doc-meta{font-size:11px;color:rgba(255,255,255,.6);display:flex;gap:16px;flex-wrap:wrap}
+.doc-local-info{font-size:12px;color:rgba(255,255,255,.85);margin-top:6px;font-weight:600;display:flex;gap:20px;flex-wrap:wrap}
+
+/* Banner responsabilidades */
+.resp-banner{background:#EEF2FF;border-top:1.5px solid #C7D2FE;border-bottom:1.5px solid #C7D2FE;padding:7px 22px;display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+.resp-item{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:#3730A3}
+.resp-item svg{color:#6366F1;flex-shrink:0}
+
+/* Tabla principal */
+.asign-doc-table{width:100%;border-collapse:collapse;font-size:13px}
+.asign-doc-table thead th{background:#1E3A5F;color:#fff;font-size:11px;font-weight:700;padding:8px 14px;letter-spacing:.4px;text-align:left}
+.asign-doc-table thead th.th-sign{text-align:center;width:220px}
+
+/* Celda del nombre del colaborador */
+.td-colab-name{vertical-align:middle;text-align:center;font-size:11.5px;font-weight:800;color:#0F2140;letter-spacing:.3px;line-height:1.3;width:110px;padding:8px 10px;border-right:2px solid var(--border);border-bottom:2px solid var(--border);background:#F0F4F8;}
+
+/* Celdas de planograma */
+.td-plan-num{width:32px;text-align:center;font-size:10.5px;font-weight:700;color:var(--muted);border-bottom:1px solid #EEF2F7;padding:6px 6px;background:#fff}
+.td-plan-name{font-size:12.5px;font-weight:600;color:var(--text);border-bottom:1px solid #EEF2F7;padding:6px 14px 6px 8px}
+.td-plan-name.last{border-bottom:2px solid var(--border)}
+
+/* Celda de firma */
+.td-sign{vertical-align:middle;text-align:center;border-left:2px solid var(--border);border-bottom:2px solid var(--border);padding:10px 14px;background:#FAFBFC;width:220px}
+.sign-inner-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.firma-canvas-wrap{border:1.5px solid var(--border);border-radius:6px;overflow:hidden;background:#fff;margin-bottom:5px}
+.firma-canvas{display:block;width:100%;height:56px;cursor:crosshair;touch-action:none}
+.firma-sign-actions{display:flex;gap:6px;align-items:center;justify-content:center;margin-bottom:5px}
+.btn-clear-sign{font-size:10.5px;font-weight:600;color:#EF4444;background:#FEE2E2;border:none;border-radius:5px;padding:3px 9px;cursor:pointer;font-family:inherit}
+.signed-tag{font-size:10.5px;color:#22C55E;font-weight:600;display:none;align-items:center;gap:3px}
+.signed-tag.show{display:flex}
+.sign-fields-row{display:flex;gap:6px;margin-top:4px;align-items:flex-end}
+.sign-field{flex:1;text-align:left}
+.sign-field-label{font-size:7.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px}
+.sign-field-line{border-bottom:1.5px solid #CBD5E1;min-height:16px;font-size:9px;color:var(--muted);padding-bottom:2px;width:100%}
+
+/* Colores alternos por bloque colaborador */
+.colab-0 .td-colab-name{background:#EEF2FF;color:#1D4ED8}
+.colab-1 .td-colab-name{background:#F0FDF4;color:#166534}
+.colab-2 .td-colab-name{background:#FEF9C3;color:#854D0E}
+.colab-3 .td-colab-name{background:#FDF4FF;color:#6B21A8}
+.colab-4 .td-colab-name{background:#FFF7ED;color:#9A3412}
+.colab-5 .td-colab-name{background:#F0FDFA;color:#134E4A}
+.colab-6 .td-colab-name{background:#FFF1F2;color:#9F1239}
+.colab-7 .td-colab-name{background:#F0F4F8;color:#0F2140}
+.tr-spacer td{height:0;padding:0;border:none;background:transparent}
+
+/* Pie de página del resumen */
+.doc-footer-legal{background:#F8FAFC;border-top:1.5px solid var(--border);padding:14px 22px;font-size:11.5px;color:var(--muted);font-style:italic;line-height:1.6}
+
+.no-vend{padding:48px 24px;text-align:center;color:var(--muted);font-size:14px}
+
+/* HISTORIAL DE CAMBIOS */
+.historial-wrap{padding:20px 24px 40px}
+.historial-wrap h2{font-size:17px;font-weight:700;margin-bottom:16px}
+.historial-table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.historial-table{width:100%;border-collapse:collapse;font-size:13px}
+.historial-table th{background:#FAFAFA;color:var(--muted);font-weight:700;padding:11px 16px;text-align:left;font-size:11.5px;letter-spacing:.4px;text-transform:uppercase;border-bottom:1px solid var(--border)}
+.historial-table td{padding:10px 16px;border-bottom:1px solid var(--border);vertical-align:middle}
+.historial-table tr:last-child td{border-bottom:none}
+.historial-table tr:hover td{background:#FAFAFA}
+.historial-date{font-size:12px;color:var(--muted);font-weight:500;white-space:nowrap;min-width:140px}
+.historial-desc{font-size:13px;color:var(--text);font-weight:500}
+.historial-empty{padding:40px 24px;text-align:center;color:var(--muted);font-size:13px}
+.btn-clear-historial{padding:6px 14px;border-radius:999px;border:1px solid var(--border);background:transparent;font-size:12px;font-weight:600;cursor:pointer;color:var(--muted);font-family:inherit;transition:all .15s}
+.btn-clear-historial:hover{background:#FFEBEA;border-color:#FF3B30;color:#D70015}
+
+/* MODAL */
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.32);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity .2s}
+.modal-backdrop.open{opacity:1;pointer-events:auto}
+.modal{background:var(--surface);border-radius:16px;width:100%;max-width:420px;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.2);transform:translateY(14px);transition:transform .2s}
+.modal-backdrop.open .modal{transform:translateY(0)}
+.modal h2{font-size:17px;font-weight:700;margin-bottom:6px}
+.modal p{font-size:13px;color:var(--muted);margin-bottom:20px}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+.btn-cancel{padding:9px 18px;border-radius:999px;border:1px solid var(--border);background:transparent;cursor:pointer;font-size:13px;font-weight:600;color:var(--text);font-family:inherit}
+.btn-danger{padding:9px 18px;border-radius:999px;border:none;background:#FF3B30;color:#fff;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit}
+
+/* HELP / GUÍA RÁPIDA */
+.btn-help{width:30px;height:30px;border-radius:50%;border:none;background:#E9E9EB;color:var(--accent);font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit;transition:background .15s;flex-shrink:0}
+.btn-help:hover{background:#DCDCE0}
+.help-modal{max-width:480px;text-align:left}
+.help-modal h2{display:flex;align-items:center;gap:8px}
+.help-steps{display:flex;flex-direction:column;gap:14px;margin:18px 0}
+.help-step{display:flex;gap:12px;align-items:flex-start}
+.help-step-num{width:26px;height:26px;border-radius:50%;background:var(--accent-lt);color:var(--accent);font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.help-step-txt strong{display:block;font-size:13.5px;color:var(--text);margin-bottom:2px}
+.help-step-txt span{font-size:12.5px;color:var(--muted);line-height:1.5}
+.help-dont-show{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);margin-top:4px;cursor:pointer;user-select:none}
+
+
+@media print{
+  .topbar,.tabs-nav,.toolbar,.stats-bar,
+  .tab-pane:not(#tab-resumen),.btn-print,
+  .firma-sign-actions,.no-print,.save-bar,
+  .resumen-fields,.resumen-header{display:none!important}
+  #tab-resumen{display:block!important}
+
+  @page{size:letter portrait;margin:6mm 8mm}
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;box-sizing:border-box}
+  body{background:#fff;font-family:'Inter',Arial,sans-serif;color:#000;margin:0;font-size:9pt}
+
+  .resumen-wrap{padding:0;margin:0}
+
+  /* RESPALDO DE SEGURIDAD: esto NO depende de JavaScript ni de cálculos de
+     márgenes — recorta cualquier exceso de contenido para que sea
+     físicamente imposible que se genere una 2ª hoja, pase lo que pase. */
+  #resumen-container{max-height:264mm;overflow:hidden}
+
+  .doc-wrap{border:0.75pt solid #334155;border-radius:0;box-shadow:none}
+  .doc-title-block{background:#0F2140!important;color:#fff!important;padding:7pt 10pt 6pt}
+  .doc-title-block h3{font-size:14pt;font-weight:800;margin-bottom:3pt}
+  .doc-meta{font-size:8pt;color:rgba(255,255,255,.7)!important;gap:10pt}
+  .doc-local-info{font-size:10pt;color:rgba(255,255,255,.9)!important;gap:12pt;margin-top:3pt}
+
+  .resp-banner{background:#EEF2FF!important;padding:4pt 10pt;gap:12pt;flex-wrap:nowrap;border-top:0.5pt solid #C7D2FE;border-bottom:0.5pt solid #C7D2FE}
+  .resp-item{font-size:9pt;color:#3730A3!important}
+  .resp-item svg{display:none}
+
+  .asign-doc-table{font-size:9.5pt}
+  .asign-doc-table thead th{font-size:9pt;padding:4pt 8pt;background:#1E3A5F!important;color:#fff!important}
+  .asign-doc-table thead th.th-sign{width:190pt}
+
+  .td-colab-name{font-size:10pt;font-weight:800;padding:5pt 6pt;width:60pt;background:#F0F4F8!important}
+  .colab-1 .td-colab-name{background:#F0FDF4!important;color:#166534!important}
+  .colab-2 .td-colab-name{background:#FEF9C3!important;color:#854D0E!important}
+  .colab-3 .td-colab-name{background:#FDF4FF!important;color:#6B21A8!important}
+  .colab-4 .td-colab-name{background:#FFF7ED!important;color:#9A3412!important}
+  .colab-5 .td-colab-name{background:#F0FDFA!important;color:#134E4A!important}
+  .colab-6 .td-colab-name{background:#FFF1F2!important;color:#9F1239!important}
+  .colab-7 .td-colab-name{background:#F0F4F8!important;color:#0F2140!important}
+
+  .td-plan-num{font-size:8.5pt;padding:3pt 4pt;width:18pt;border-bottom:0.5pt solid #E2E8F0}
+  .td-plan-name{font-size:9.5pt;padding:3pt 8pt;border-bottom:0.5pt solid #E2E8F0}
+  .td-plan-name.last{border-bottom:1pt solid #94A3B8}
+
+  .td-sign{width:190pt;padding:6pt 11pt;background:#FAFBFC!important}
+  .sign-inner-label{font-size:9pt;margin-bottom:4pt}
+  .firma-canvas-wrap{border:0.75pt solid #94A3B8;margin-bottom:4pt}
+  .firma-canvas{height:50pt}
+  .sign-fields-row{gap:7pt;margin-top:3pt;align-items:flex-end}
+  .sign-field-label{font-size:8pt;white-space:nowrap}
+  .sign-field-line{min-height:16pt;font-size:9.5pt;border-bottom:0.75pt solid #334155;width:100%}
+  .signed-tag{display:none!important}
+  .tr-spacer td{height:1pt!important;background:#E2E8F0!important}
+
+  .doc-footer-legal{background:#F8FAFC!important;border-top:0.75pt solid #94A3B8;padding:6pt 10pt;font-size:7pt;color:#475569!important}
+}
+@media(max-width:600px){
+  .asign-wrap,.resumen-wrap,.product-list-wrap,.historial-wrap{padding:0 12px 40px}
+  .toolbar,.stats-bar{padding:10px 12px}
+  .topbar{padding:0 12px}
+  .progress-wrap{display:none}
+  .search-wrap{max-width:none;flex:1 1 100%}
+  .filter-select{flex:1 1 auto}
+  .product-list-header{display:none}
+  .product-item{flex-wrap:wrap;row-gap:6px;padding:12px 14px}
+  .product-item .product-num{order:1}
+  .product-item .product-name{order:2;flex:1 1 calc(100% - 40px);font-size:14px}
+  .product-item .badge{order:3}
+  .product-item .product-pct{order:4;margin-left:auto}
+  .product-item .product-resp,
+  .product-item span[title*="colaborador"],
+  .product-item span[title*="sistema"],
+  .product-item span[title*="respaldo"]{order:5;max-width:none!important;white-space:normal!important}
+  .product-item .product-rev-dot{order:6}
+}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:9px}
+
+/* GOOGLE SHEETS SYNC */
+.sync-btn{display:flex;align-items:center;gap:6px;padding:5px 13px;border-radius:999px;border:1px solid var(--border);background:#F2F2F7;color:var(--text);font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s}
+.sync-btn:hover{background:#E9E9EB}
+.sync-btn.connected{border-color:#34C759;color:#1F8B3A;background:#E8F8ED}
+.sync-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:250;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity .2s}
+.sync-modal-backdrop.open{opacity:1;pointer-events:auto}
+.sync-modal{background:#fff;border-radius:18px;width:100%;max-width:500px;padding:28px;box-shadow:0 24px 64px rgba(0,0,0,.2);transform:translateY(12px);transition:transform .2s}
+.sync-modal-backdrop.open .sync-modal{transform:translateY(0)}
+.sync-modal h2{font-size:17px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+.sync-modal p{font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.5}
+.sync-url-input{width:100%;padding:9px 12px;border:none;border-radius:10px;font-size:13px;font-family:inherit;color:var(--text);outline:none;transition:box-shadow .15s;background:#F2F2F7;margin-bottom:12px}
+.sync-url-input:focus{box-shadow:0 0 0 2px var(--accent)}
+.sync-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.btn-sync-push{flex:1;padding:9px 16px;border-radius:999px;background:#34C759;color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px;transition:opacity .15s}
+.btn-sync-push:hover{opacity:.9}
+.btn-sync-pull{flex:1;padding:9px 16px;border-radius:999px;background:var(--accent);color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px;transition:opacity .15s}
+.btn-sync-pull:hover{opacity:.9}
+.sync-status{margin-top:14px;font-size:12.5px;padding:10px 14px;border-radius:10px;display:none;align-items:center;gap:8px;font-weight:600}
+.sync-status.show{display:flex}
+.sync-status.ok{background:#E8F8ED;color:#1F8B3A}
+.sync-status.err{background:#FFEBEA;color:#D70015}
+.sync-status.loading{background:var(--accent-lt);color:#0062CC}
+.sync-note{font-size:11.5px;color:var(--muted);margin-top:14px;padding:10px 12px;background:#F7F7F9;border-radius:10px;border:1px solid var(--border);line-height:1.6}
+.sync-note strong{color:var(--text)}
+.sync-last{font-size:11px;color:var(--muted);margin-top:8px;text-align:center}
+.autosync-row{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 12px;background:#F2F2F7;border-radius:10px}
+.autosync-row label{font-size:13px;font-weight:600;color:var(--text);cursor:pointer;flex:1}
+.autosync-toggle{width:36px;height:20px;border-radius:10px;background:#E5E5EA;position:relative;cursor:pointer;border:none;transition:background .2s;flex-shrink:0}
+.autosync-toggle.on{background:#34C759}
+.autosync-toggle::after{content:'';position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.autosync-toggle.on::after{transform:translateX(16px)}
+</style>
+
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="topbar-brand">
+    <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+      <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+    </svg>
+    Seguimiento de Planogramas
+  </div>
+  <div class="topbar-right">
+    <button class="btn-help" onclick="openHelp()" title="Guía rápida">?</button>
+    <div class="autosave-indicator saved" id="autosave-indicator">
+      <span class="autosave-dot"></span>
+      <span id="autosave-text">Guardado</span>
+    </div>
+    <button class="btn-sm btn-primary" onclick="confirmReset()">↺ Reiniciar</button>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="tabs-nav">
+  <button class="tab-btn active" onclick="switchTab('seguimiento',this)">📋 Seguimiento</button>
+  <button class="tab-btn" onclick="switchTab('asignacion',this)">👥 Asignación</button>
+  <button class="tab-btn" onclick="switchTab('resumen',this)">📊 Resumen y Firma</button>
+  <button class="tab-btn" onclick="switchTab('historial',this)">📝 Historial</button>
+  <button class="tab-btn" id="sheets-tab-btn" onclick="switchTab('sheets',this)">🔗 Google Sheets</button>
+</div>
+
+<!-- ══════════ TAB SEGUIMIENTO ══════════ -->
+<div class="tab-pane active" id="tab-seguimiento">
+  <div class="stats-bar">
+    <div class="stat-pill total"><span id="stat-total">0</span> Total</div>
+    <div class="stat-pill pending"><span class="stat-dot" style="background:var(--pending-dot)"></span><span id="stat-pending">0</span> Pendiente</div>
+    <div class="stat-pill process"><span class="stat-dot" style="background:var(--process-dot)"></span><span id="stat-process">0</span> En Proceso</div>
+    <div class="stat-pill done"><span class="stat-dot" style="background:var(--done-dot)"></span><span id="stat-done">0</span> Listo</div>
+    <div class="stat-pill blocked"><span class="stat-dot" style="background:var(--blocked-dot)"></span><span id="stat-blocked">0</span> Bloqueado</div>
+    <div class="progress-wrap">Completado
+      <div class="progress-bar-outer"><div class="progress-bar-inner" id="global-bar" style="width:0%"></div></div>
+      <span class="progress-pct" id="global-pct">0%</span>
+    </div>
+  </div>
+  <div class="toolbar">
+    <div class="search-wrap">
+      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input class="search-input" type="text" id="search" placeholder="Buscar planograma…" oninput="renderList()"/>
+    </div>
+    <select class="filter-select" id="filter-estado" onchange="renderList()">
+      <option value="">Todos los estados</option>
+      <option value="pending">⏳ Pendiente</option>
+      <option value="process">🔄 En Proceso</option>
+      <option value="done">✅ Listo</option>
+      <option value="blocked">⛔ Bloqueado</option>
+    </select>
+    <select class="filter-select" id="filter-sort" onchange="renderList()">
+      <option value="default">Orden original</option>
+      <option value="name">Nombre A–Z</option>
+      <option value="pct-desc">% Avance ↓</option>
+      <option value="pct-asc">% Avance ↑</option>
+    </select>
+    <select class="filter-select" id="filter-rev" onchange="renderList()">
+      <option value="">Todas las revisiones</option>
+      <option value="none">🕐 Sin revisión</option>
+      <option value="late">🔴 Sin revisar +21 días</option>
+      <option value="warn">⚠️ Revisar pronto (8-21 días)</option>
+      <option value="ok">✅ Al día (≤7 días)</option>
+    </select>
+  </div>
+  <div class="product-list-wrap">
+    <div class="product-list" id="product-list">
+      <div class="product-list-header">
+        <span style="min-width:28px">#</span>
+        <span style="flex:1">Planograma</span>
+        <span style="min-width:90px">Responsable</span>
+        <span style="min-width:50px;text-align:right">Avance</span>
+        <span style="min-width:14px"></span>
+      </div>
+      <div id="product-list-body"></div>
+    </div>
+  </div>
+</div>
+
+<!-- PANEL DE DETALLE -->
+<div class="detail-panel-overlay" id="detail-overlay" onclick="closeDetailFromOverlay(event)">
+  <div class="detail-panel" id="detail-panel">
+    <div class="detail-panel-header">
+      <div>
+        <div class="detail-panel-num" id="detail-num"></div>
+        <div class="detail-panel-title" id="detail-title"></div>
+      </div>
+      <button class="btn-close-detail" onclick="closeDetail()">✕</button>
+    </div>
+    <div class="detail-panel-body" id="detail-body"></div>
+  </div>
+</div>
+
+<!-- ══════════ TAB ASIGNACIÓN ══════════ -->
+<div class="tab-pane" id="tab-asignacion">
+  <div class="asign-wrap">
+
+    <!-- Barra superior: título + botón agregar colaborador + agregar planograma -->
+    <div class="section-box" style="margin-bottom:20px">
+      <div class="section-box-title">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" d="M12 4v16m8-8H4"/></svg>
+        Agregar nuevo planograma a la lista maestra
+      </div>
+      <div class="add-plan-row">
+        <input type="text" id="new-plan-input" placeholder="Nombre del planograma (ej: ORAL B, PAÑALES, NUTRICIÓN…)" onkeydown="if(event.key==='Enter')addPlanograma()"/>
+        <button class="btn-green" onclick="addPlanograma()">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" d="M12 4v16m8-8H4"/></svg>
+          Agregar
+        </button>
+      </div>
+      <button id="toggle-plan-list-btn" onclick="togglePlanList()" style="margin-top:12px;background:none;border:none;color:var(--accent);font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;padding:0">
+        <svg id="toggle-plan-list-icon" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="transition:transform .2s"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
+        <span id="toggle-plan-list-label">Ver / editar / eliminar planogramas (<span id="plan-count-label">0</span>)</span>
+      </button>
+      <div id="plan-list-panel" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+        <input type="text" id="plan-list-search" placeholder="Buscar en la lista…" oninput="renderPlanList()" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:inherit;color:var(--text);background:var(--bg);outline:none;margin-bottom:10px"/>
+        <div id="plan-list-items" style="display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto"></div>
+      </div>
+    </div>
+
+    <div id="asign-summary" class="section-box" style="margin-bottom:20px"></div>
+
+    <div class="asign-top-bar">
+      <h2>👥 Colaboradores y asignaciones</h2>
+    </div>
+
+    <!-- Grid de tarjetas -->
+    <div class="colab-cards-grid" id="colab-cards-grid"></div>
+
+  </div>
+</div>
+
+<!-- MODAL: Editar nombre de planograma -->
+<div class="add-colab-modal-backdrop" id="edit-plan-modal-backdrop" onclick="closeEditPlanModal(event)">
+  <div class="add-colab-modal">
+    <h3>Editar nombre del planograma</h3>
+    <input class="add-colab-input" type="text" id="edit-plan-input" placeholder="Nombre del planograma…" onkeydown="if(event.key==='Enter')confirmEditPlan()"/>
+    <div class="add-colab-actions">
+      <button class="btn-cancel" onclick="closeEditPlanModalBtn()">Cancelar</button>
+      <button class="btn-confirm" onclick="confirmEditPlan()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Asignar planogramas rápido -->
+<div class="asign-modal-backdrop" id="asign-modal-backdrop" onclick="closeAsignModal(event)">
+  <div class="asign-modal">
+    <div class="asign-modal-head">
+      <div>
+        <h3 id="am-title">Asignar planogramas</h3>
+        <span id="am-subtitle"></span>
+      </div>
+      <button class="btn-close-am" onclick="closeAsignModalBtn()">✕</button>
+    </div>
+    <div class="asign-modal-search">
+      <div class="am-search-wrap">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input class="am-search-input" type="text" id="am-search" placeholder="Buscar planograma…" oninput="renderAmList()"/>
+      </div>
+    </div>
+    <div class="asign-modal-list" id="am-list"></div>
+    <div class="asign-modal-footer">
+      <div class="am-footer-count" id="am-footer-count"></div>
+      <button class="btn-am-save" onclick="saveAsignModal()">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+        Guardar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Agregar/editar colaborador -->
+<div class="add-colab-modal-backdrop" id="add-colab-modal-backdrop" onclick="closeAddColabModal(event)">
+  <div class="add-colab-modal">
+    <h3 id="add-colab-title">Nuevo colaborador</h3>
+    <input class="add-colab-input" type="text" id="add-colab-input" placeholder="Nombre completo del colaborador…" onkeydown="if(event.key==='Enter')confirmAddColab()"/>
+    <div class="add-colab-actions">
+      <button class="btn-cancel" onclick="closeAddColabModalBtn()">Cancelar</button>
+      <button class="btn-confirm" onclick="confirmAddColab()" id="add-colab-confirm-btn">Agregar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast de guardado -->
+<div class="asign-toast" id="asign-toast">
+  <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+  <span id="asign-toast-msg">¡Cambios guardados!</span>
+</div>
+
+<!-- ══════════ TAB RESUMEN ══════════ -->
+<div class="tab-pane" id="tab-resumen">
+  <div class="resumen-wrap">
+    <div class="resumen-header">
+      <h2>Resumen General de Asignaciones</h2>
+      <button class="btn-print" onclick="window.print()">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.75 17.5H5.25A2.25 2.25 0 013 15.25V9.75A2.25 2.25 0 015.25 7.5h13.5A2.25 2.25 0 0121 9.75v5.5a2.25 2.25 0 01-2.25 2.25H17.25L17.28 13.829M6.72 13.829L6.75 17.5m10.53-3.671L17.25 17.5m0 0H6.75"/></svg>
+        Imprimir / PDF
+      </button>
+    </div>
+
+    <!-- Campos editables del encabezado -->
+    <div class="resumen-fields no-print">
+      <div class="resumen-field-group">
+        <label class="resumen-field-label">N° de Local</label>
+        <input class="resumen-field-input" type="text" id="res-local" placeholder="Ej: 0042" oninput="saveResumenMeta(); renderResumen()"/>
+      </div>
+      <div class="resumen-field-group" style="flex:2">
+        <label class="resumen-field-label">Químico(s) Farmacéutico(s) Responsable(s)</label>
+        <input class="resumen-field-input" type="text" id="res-quimico" placeholder="Ej: Dra. María González, Dr. Juan Pérez" oninput="saveResumenMeta(); renderResumen()"/>
+      </div>
+    </div>
+
+    <div id="resumen-container"></div>
+  </div>
+</div>
+
+<!-- ══════════ TAB HISTORIAL ══════════ -->
+<div class="tab-pane" id="tab-historial">
+  <div class="historial-wrap">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
+      <h2>Historial de Cambios</h2>
+      <button class="btn-clear-historial no-print" onclick="clearHistorial()">🗑 Limpiar historial</button>
+    </div>
+    <div class="historial-table-wrap">
+      <table class="historial-table">
+        <thead>
+          <tr>
+            <th style="width:160px">Fecha y hora</th>
+            <th>Cambio realizado</th>
+          </tr>
+        </thead>
+        <tbody id="historial-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ TAB GOOGLE SHEETS ══════════ -->
+<div class="tab-pane" id="tab-sheets">
+  <div style="padding:24px;max-width:560px;margin:0 auto">
+
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+      <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:#34C759"><path stroke-linecap="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+      <h2 style="font-size:18px;font-weight:700">Sincronización con Google Sheets</h2>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:22px;line-height:1.6">Conecta una planilla de Google Sheets para mantener tus datos respaldados en la nube y accesibles desde cualquier dispositivo o navegador.</p>
+
+    <!-- Sincronización automática -->
+    <div style="border:1.5px solid var(--border);border-radius:12px;padding:16px 20px;background:var(--surface);margin-bottom:18px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:18px">🔄</span>
+      <div>
+        <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:2px">Sincronización automática activa</div>
+        <div style="font-size:12px;color:var(--muted)">Cada vez que guardes un cambio, se envía automáticamente a Google Sheets</div>
+        <div class="sync-last" id="sync-last-time" style="text-align:left;margin-top:6px"></div>
+      </div>
+    </div>
+
+    <!-- Botón de acción -->
+    <div style="margin-bottom:4px">
+      <button class="btn-sync-pull" onclick="syncPull()" style="width:100%;flex:none;padding:14px 16px;font-size:14px;border-radius:10px">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+        Cargar desde Sheets
+      </button>
+      <div style="font-size:11px;color:var(--muted);margin-top:5px;text-align:center">Trae los datos actuales de Google Sheets y los reemplaza en esta pantalla — úsalo tras editar el Excel</div>
+    </div>
+
+    <div class="sync-status" id="sync-status" style="font-size:13px"></div>
+
+    <!-- Nota sobre fotos -->
+    <div class="sync-note" style="margin-top:16px">
+      <strong>¿Qué se sincroniza?</strong><br>
+      ✅ Estados, fechas, avance, observaciones<br>
+      ✅ Colaboradores y asignaciones<br>
+      ✅ N° de local, Q.F. responsable<br>
+      ✅ Historial de cambios<br>
+      ❌ Fotos (demasiado grandes para Google Sheets, se guardan solo localmente)
+    </div>
+
+    <!-- Instrucciones -->
+    <details style="margin-top:18px;border:1.5px solid var(--border);border-radius:10px;overflow:hidden">
+      <summary style="padding:14px 16px;font-size:13px;font-weight:700;cursor:pointer;background:var(--surface);list-style:none;display:flex;align-items:center;justify-content:space-between">
+        📖 Instrucciones de configuración
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
+      </summary>
+      <div style="padding:16px;font-size:13px;color:var(--text);line-height:1.8;background:#FAFBFC;border-top:1px solid var(--border)">
+        <strong>1.</strong> Abre <a href="https://script.google.com" target="_blank" style="color:var(--accent)">script.google.com</a> e inicia sesión<br>
+        <strong>2.</strong> Crea un <strong>Nuevo proyecto</strong> y pega el contenido del archivo <code style="background:#EEF2FF;padding:1px 5px;border-radius:4px">Code.gs</code><br>
+        <strong>3.</strong> Haz clic en <strong>Ejecutar → inicializar</strong> (crea las hojas automáticamente)<br>
+        <strong>4.</strong> Ve a <strong>Desplegar → Nueva implementación</strong><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;• Tipo: <em>Aplicación web</em><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;• Ejecutar como: <em>Yo mismo</em><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;• Quién tiene acceso: <em>Cualquiera</em><br>
+        <strong>5.</strong> Copia la <strong>URL del Web App</strong> y pégala en la constante <code style="background:#EAF2FF;padding:1px 5px;border-radius:4px">SHEETS_WEBAPP_URL</code> al inicio del bloque <code style="background:#EAF2FF;padding:1px 5px;border-radius:4px">&lt;script&gt;</code> de este archivo HTML, luego vuelve a guardar/subir el archivo
+      </div>
+    </details>
+  </div>
+</div>
+
+
+<!-- MODAL GUÍA RÁPIDA -->
+<div class="modal-backdrop" id="modal-help" onclick="if(event.target===this)closeHelp()">
+  <div class="modal help-modal">
+    <h2>👋 Guía rápida</h2>
+    <p style="margin-bottom:0">Así funciona la app en 4 pasos:</p>
+    <div class="help-steps">
+      <div class="help-step">
+        <div class="help-step-num">1</div>
+        <div class="help-step-txt">
+          <strong>👥 Asignación</strong>
+          <span>Agrega los planogramas a la lista maestra y asigna cada uno a un colaborador.</span>
+        </div>
+      </div>
+      <div class="help-step">
+        <div class="help-step-num">2</div>
+        <div class="help-step-txt">
+          <strong>📋 Seguimiento</strong>
+          <span>Haz clic en cualquier planograma para actualizar su estado, % de avance, fechas y observaciones.</span>
+        </div>
+      </div>
+      <div class="help-step">
+        <div class="help-step-num">3</div>
+        <div class="help-step-txt">
+          <strong>📊 Resumen y Firma</strong>
+          <span>Revisa el resumen general, completa N° de local y Q.F. responsable, e imprime o guarda como PDF.</span>
+        </div>
+      </div>
+      <div class="help-step">
+        <div class="help-step-num">4</div>
+        <div class="help-step-txt">
+          <strong>🔗 Google Sheets (opcional)</strong>
+          <span>Conecta una planilla para respaldar los datos en la nube y compartirlos entre dispositivos.</span>
+        </div>
+      </div>
+    </div>
+    <label class="help-dont-show">
+      <input type="checkbox" id="help-dont-show-chk"/> No volver a mostrar esto al abrir la app
+    </label>
+    <div class="modal-actions">
+      <button class="btn-confirm" onclick="closeHelp()">Entendido</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL RESET -->
+<div class="modal-backdrop" id="modal-reset">
+  <div class="modal">
+    <h2>¿Reiniciar todo?</h2>
+    <p>Se borrarán todos los datos, fotos, asignaciones y firmas. Esta acción no se puede deshacer.</p>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
+      <button class="btn-danger" onclick="doReset()">Sí, reiniciar</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="colab-photo-input" accept="image/*" style="display:none" onchange="handleColabPhotoUpload(event)"/>
+
+<!-- LIGHTBOX -->
+<div class="photo-lightbox" id="photo-lightbox" onclick="closeLightbox()">
+  <button class="photo-lightbox-close" onclick="closeLightbox()">✕</button>
+  <img id="lightbox-img" src="" alt="Foto ampliada"/>
+</div>
+
+<script>
+/* ══════════════════════════════════════════
+   ESTADO GLOBAL
+══════════════════════════════════════════ */
+const DEFAULT_PLANOGRAMAS = [
+  "PSF","COOLER","MASCOTAS","MAQ. MAKE UP","PERFUMERÍA","ACCESORIOS",
+  "MAQ. MAYBELLINE","DEPILACIÓN","SALUD SEXUAL","JABONES",
+  "DESODORANTES MASCULINOS","AFEITADO","HIGIENE BUCAL","PRIMEROS AUXILIOS",
+  "DESODORANTES FEMENINOS","CERAVE","CREMAS COREANAS","CAPILAR",
+  "CREMAS CORPORALES","NUXE","EUCERIN","ISISPHARMA","FILORGA","URIAGE",
+  "CETAPHIL","AVENE","SVR","ISDIN","LRP","VICHY","DARROW","DUCRAY",
+  "DEUTSCHE","ALIMENTOS BEBÉ","ACCESORIOS BEBÉ","PERFUMERÍA BEBÉ",
+  "VITAMINAS & SUPLEMENTOS","CIRCUITO COLGATE","CIRCUITO LEVER",
+  "SCIENZA FORTISIP","ESPACIO MASCOTAS","MASCOTAS TRAS MESÓN","OTC",
+  "CENABAST","BQ","GENÉRICOS","RECETARIO","40 PRINCIPALES"
+];
+
+const STATUS_META = {
+  pending:{label:"⏳ Pendiente",cls:"pending"},
+  process:{label:"🔄 En Proceso",cls:"process"},
+  done:   {label:"✅ Listo",     cls:"done"},
+  blocked:{label:"⛔ Bloqueado", cls:"blocked"},
+};
+const SK = "planogramas_v5";
+
+let data = [];
+let vendedores = [];
+let asignaciones = {};
+let firmas = {};
+let historial = [];
+let resumenMeta = { local: "", quimico: "" };
+let selectedVend = null;
+let pendingChanges = false;
+let currentPhotoIdx = null;
+let addVendOpen = false;
+let currentDetailId = null;
+let autosaveTimer = null;
+
+function makePlanId(){ return 'p' + Date.now() + Math.random().toString(36).slice(2,6); }
+
+function defaultData(){
+  return DEFAULT_PLANOGRAMAS.map(name=>({
+    id: makePlanId(), name,
+    status:"pending",responsable:"",fechaActual:"",fechaRevision:"",fechaActualizSistema:"",fechaActualizColab:"",fotosColab:[],avance:0,obs:""
+  }));
+}
+
+/* ══════ AUTOSAVE INDICATOR ══════ */
+function setAutosaveStatus(status){
+  const el = document.getElementById('autosave-indicator');
+  const txt = document.getElementById('autosave-text');
+  el.className = 'autosave-indicator ' + status;
+  if(status === 'saving')  txt.textContent = 'Guardando...';
+  if(status === 'saved')   txt.textContent = 'Guardado';
+  if(status === 'error')   txt.textContent = 'Error de sincronización';
+}
+
+/* ══════ CLOUD STORAGE (window.storage API) ══════ */
+async function cloudSave(payload){
+  setAutosaveStatus('saving');
+  try {
+    const rawA = {};
+    for(const k in payload.asignaciones) rawA[k] = [...payload.asignaciones[k]];
+    const toStore = {
+      data: payload.data,
+      vendedores: payload.vendedores,
+      asignaciones: rawA,
+      firmas: payload.firmas,
+      historial: payload.historial || [],
+      resumenMeta: payload.resumenMeta || {local:'',quimico:''}
+    };
+    // Try cloud first
+    if(window.storage){
+      await window.storage.set(SK, JSON.stringify(toStore));
+    }
+    // Also save locally as fallback
+    try { localStorage.setItem(SK, JSON.stringify(toStore)); } catch(e){}
+    setAutosaveStatus('saved');
+  } catch(e){
+    // Fallback to localStorage if cloud fails
+    try {
+      const rawA = {};
+      for(const k in payload.asignaciones) rawA[k] = [...payload.asignaciones[k]];
+      const slim = { data: payload.data.map(d=>({...d})), vendedores: payload.vendedores, asignaciones: rawA, firmas: payload.firmas, historial: payload.historial||[], resumenMeta: payload.resumenMeta||{local:'',quimico:''} };
+      localStorage.setItem(SK, JSON.stringify(slim));
+      setAutosaveStatus('saved');
+    } catch(e2){
+      setAutosaveStatus('error');
+    }
+  }
+}
+
+async function cloudLoad(){
+  // Try cloud first
+  if(window.storage){
+    try {
+      const result = await window.storage.get(SK);
+      if(result && result.value){
+        return JSON.parse(result.value);
+      }
+    } catch(e){}
+  }
+  // Fallback to localStorage
+  try {
+    const raw = localStorage.getItem(SK);
+    if(raw) return JSON.parse(raw);
+  } catch(e){}
+  return null;
+}
+
+/* ══════ LOAD / SAVE ══════ */
+async function load(){
+  try{
+    const s = await cloudLoad();
+    if(s){
+      data = s.data || defaultData();
+      vendedores = s.vendedores || [];
+      asignaciones = {};
+      const rawA = s.asignaciones || {};
+      for(const k in rawA){
+        const v = rawA[k];
+        asignaciones[k] = v instanceof Set ? v : new Set(Array.isArray(v) ? v : []);
+      }
+      firmas = s.firmas || {};
+      historial = s.historial || [];
+      resumenMeta = s.resumenMeta || {local:'',quimico:''};
+    } else {
+      data = defaultData(); vendedores = []; asignaciones = {}; firmas = {}; historial = []; resumenMeta = {local:'',quimico:''};
+    }
+  } catch { data=defaultData(); vendedores=[]; asignaciones={}; firmas={}; historial=[]; resumenMeta={local:'',quimico:''}; }
+  // Restore resumen meta fields
+  const localEl = document.getElementById('res-local');
+  const quimicoEl = document.getElementById('res-quimico');
+  if(localEl) localEl.value = resumenMeta.local || '';
+  if(quimicoEl) quimicoEl.value = resumenMeta.quimico || '';
+  renderList();
+  renderAsign();
+  renderHistorial();
+  setAutosaveStatus('saved');
+  setTimeout(renderAsign, 50);
+}
+
+function scheduleAutosave(changeDesc){
+  if(changeDesc) addHistorialEntry(changeDesc);
+  if(autosaveTimer) clearTimeout(autosaveTimer);
+  setAutosaveStatus('saving');
+  autosaveTimer = setTimeout(async () => {
+    await cloudSave({data, vendedores, asignaciones, firmas, historial, resumenMeta});
+  }, 800);
+}
+
+function saveAll(planIdx, changeDesc){
+  if(changeDesc) addHistorialEntry(changeDesc);
+  const rawA = {};
+  for(const k in asignaciones) rawA[k] = [...asignaciones[k]];
+  if(planIdx !== undefined) flashDetailSaved();
+  updateStats();
+  scheduleAutosave(null);
+  // Si hay un cambio real, programar sincronización con Sheets
+  if(changeDesc) scheduleSheetsSync();
+}
+
+function saveResumenMeta(){
+  resumenMeta.local = document.getElementById('res-local')?.value || '';
+  resumenMeta.quimico = document.getElementById('res-quimico')?.value || '';
+  scheduleAutosave(null);
+  scheduleSheetsSync();
+}
+
+/* ══════ HISTORIAL ══════ */
+function fmtDateTime(){
+  const d = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function addHistorialEntry(desc){
+  historial.unshift({ fecha: fmtDateTime(), desc });
+  if(historial.length > 200) historial = historial.slice(0, 200);
+  renderHistorial();
+}
+
+function renderHistorial(){
+  const tbody = document.getElementById('historial-body');
+  if(!tbody) return;
+  if(!historial.length){
+    tbody.innerHTML = `<tr><td colspan="2" class="historial-empty">Sin cambios registrados aún.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = historial.map(h=>`
+    <tr>
+      <td class="historial-date">${h.fecha}</td>
+      <td class="historial-desc">${esc(h.desc)}</td>
+    </tr>`).join('');
+}
+
+function clearHistorial(){
+  if(!confirm('¿Limpiar todo el historial de cambios?')) return;
+  historial = [];
+  renderHistorial();
+  scheduleAutosave(null);
+}
+
+/* ══════ TABS ══════ */
+function switchTab(name, btn){
+  document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  btn.classList.add('active');
+  if(name==='seguimiento') renderList();
+  if(name==='asignacion')  renderAsign();
+  if(name==='resumen')     renderResumen();
+  if(name==='historial')   renderHistorial();
+  if(name==='sheets')      initSheetsTab();
+}
+
+/* ══════ AGREGAR PLANOGRAMA ══════ */
+function addPlanograma(){
+  const inp = document.getElementById('new-plan-input');
+  const name = inp.value.trim().toUpperCase();
+  if(!name) return;
+  if(data.some(d=>d.name.toUpperCase()===name)){
+    inp.style.borderColor='#FF3B30';
+    inp.placeholder='⚠ Ya existe ese planograma';
+    setTimeout(()=>{inp.style.borderColor='';inp.placeholder='Nombre del planograma (ej: ORAL B, PAÑALES, NUTRICIÓN…)';},2000);
+    return;
+  }
+  const newPlan = {id:makePlanId(), name, status:"pending", responsable:"", fechaActual:"", fechaRevision:"", fechaActualizSistema:"", fechaActualizColab:"", fotosColab:[], avance:0, obs:"", photo:null};
+  data.push(newPlan);
+  inp.value='';
+  saveAll(undefined, `Se agregó nuevo planograma: ${name}`);
+  renderList();
+  renderAsign();
+  renderPlanList();
+  inp.style.borderColor='#34C759';
+  inp.placeholder=`✓ "${name}" agregado`;
+  setTimeout(()=>{inp.style.borderColor='';inp.placeholder='Nombre del planograma (ej: ORAL B, PAÑALES, NUTRICIÓN…)';},2000);
+}
+
+/* ── Lista colapsable de planogramas: ver / editar / eliminar ── */
+let planListOpen = false;
+function togglePlanList(){
+  planListOpen = !planListOpen;
+  const panel = document.getElementById('plan-list-panel');
+  const icon  = document.getElementById('toggle-plan-list-icon');
+  panel.style.display = planListOpen ? 'block' : 'none';
+  icon.style.transform = planListOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+  if(planListOpen) renderPlanList();
+}
+
+function renderPlanList(){
+  const countLabel = document.getElementById('plan-count-label');
+  if(countLabel) countLabel.textContent = data.length;
+  const wrap = document.getElementById('plan-list-items');
+  if(!wrap) return;
+  if(!data.length){
+    wrap.innerHTML = `<div class="plan-list-empty">Aún no hay planogramas en la lista.</div>`;
+    return;
+  }
+  const searchEl = document.getElementById('plan-list-search');
+  const q = (searchEl?.value || '').trim().toLowerCase();
+  const items = q ? data.filter(d=>d.name.toLowerCase().includes(q)) : data;
+  if(!items.length){
+    wrap.innerHTML = `<div class="plan-list-empty">Sin resultados para "${esc(q)}".</div>`;
+    return;
+  }
+  wrap.innerHTML = items.map(d=>{
+    const asignado = asignadoNombre(d.id);
+    return `
+    <div class="plan-list-row">
+      <span class="plan-list-name" title="${esc(d.name)}">${esc(d.name)}</span>
+      ${asignado
+        ? `<span style="font-size:11px;color:#1F8B3A;background:#E8F8ED;padding:2px 8px;border-radius:20px;font-weight:600;white-space:nowrap;flex-shrink:0" title="Asignado a ${esc(asignado)}">👤 ${esc(asignado)}</span>`
+        : `<span style="font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0">Sin asignar</span>`}
+      <div class="plan-list-actions">
+        <button class="btn-edit-colab" title="Editar nombre" onclick="openEditPlanModal('${d.id}')">✏️</button>
+        <button class="btn-del-colab" title="Eliminar planograma" onclick="deletePlanograma('${d.id}')">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+
+let editingPlanId = null;
+function openEditPlanModal(planId){
+  const d = data.find(x=>x.id===planId);
+  if(!d) return;
+  editingPlanId = planId;
+  const inp = document.getElementById('edit-plan-input');
+  inp.value = d.name;
+  document.getElementById('edit-plan-modal-backdrop').classList.add('open');
+  setTimeout(()=>{ inp.focus(); inp.select(); }, 80);
+}
+function closeEditPlanModal(e){ if(e && e.target!==e.currentTarget) return; closeEditPlanModalBtn(); }
+function closeEditPlanModalBtn(){ document.getElementById('edit-plan-modal-backdrop').classList.remove('open'); editingPlanId=null; }
+function confirmEditPlan(){
+  if(!editingPlanId) return;
+  const inp = document.getElementById('edit-plan-input');
+  const newName = inp.value.trim().toUpperCase();
+  if(!newName) return;
+  const d = data.find(x=>x.id===editingPlanId);
+  if(!d) return;
+  if(data.some(x=>x.id!==editingPlanId && x.name.toUpperCase()===newName)){
+    inp.style.borderColor='#FF3B30';
+    setTimeout(()=>{ inp.style.borderColor=''; },1500);
+    return;
+  }
+  const oldName = d.name;
+  d.name = newName;
+  saveAll(undefined, `Se renombró planograma "${oldName}" a "${newName}"`);
+  renderList();
+  renderAsign();
+  renderPlanList();
+  closeEditPlanModalBtn();
+  showToast('✏️ Planograma actualizado');
+}
+
+/* ══════ PRODUCT LIST (vista simplificada) ══════ */
+function barColor(p){ return p>=100?"#34C759":p>=60?"#007AFF":p>=30?"#FF9500":"#8E8E93" }
+function esc(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;") }
+
+function revisionInfo(fechaRev){
+  if(!fechaRev) return {cls:'rev-none', label:'Sin revisión', dias:null};
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const rev = new Date(fechaRev+'T00:00:00');
+  const dias = Math.round((hoy - rev) / 86400000);
+  if(dias <= 7)  return {cls:'rev-ok',   label:`Revisado hace ${dias===0?'hoy':dias===1?'1 día':dias+' días'}`, dias};
+  if(dias <= 21) return {cls:'rev-warn', label:`Revisado hace ${dias} días`, dias};
+  return              {cls:'rev-late',  label:`Sin revisar: ${dias} días`, dias};
+}
+
+function revDotColor(cls){
+  if(cls==='rev-ok') return '#34C759';
+  if(cls==='rev-warn') return '#FF9500';
+  if(cls==='rev-late') return '#FF3B30';
+  return '#8E8E93';
+}
+
+function asignadoNombre(planId){
+  const asignados = vendedores.filter(v => asignaciones[v.id] && asignaciones[v.id].has(planId));
+  return asignados.length ? asignados.map(v=>v.name).join(", ") : null;
+}
+
+function renderList(){
+  const body = document.getElementById("product-list-body");
+  const q    = document.getElementById("search").value.toLowerCase();
+  const fS   = document.getElementById("filter-estado").value;
+  const fSort= document.getElementById("filter-sort").value;
+  const fRev = document.getElementById("filter-rev").value;
+  let items  = data.filter(d=>{
+    if(!d.name.toLowerCase().includes(q)) return false;
+    if(fS && d.status!==fS) return false;
+    if(fRev){
+      const info = revisionInfo(d.fechaRevision);
+      if(fRev==='none' && info.cls!=='rev-none') return false;
+      if(fRev==='late' && info.cls!=='rev-late') return false;
+      if(fRev==='warn' && info.cls!=='rev-warn') return false;
+      if(fRev==='ok'   && info.cls!=='rev-ok')   return false;
+    }
+    return true;
+  });
+  if(fSort==="name")     items.sort((a,b)=>a.name.localeCompare(b.name));
+  if(fSort==="pct-desc") items.sort((a,b)=>b.avance-a.avance);
+  if(fSort==="pct-asc")  items.sort((a,b)=>a.avance-b.avance);
+
+  if(!items.length){
+    body.innerHTML=`<div class="empty-state"><p>No hay planogramas que coincidan.</p></div>`;
+    updateStats(); return;
+  }
+
+  const meta = STATUS_META;
+  body.innerHTML = items.map(d=>{
+    const num = data.indexOf(d)+1;
+    const pct = Number(d.avance)||0;
+    const color = barColor(pct);
+    const revInfo = revisionInfo(d.fechaRevision);
+    const colaborador = asignadoNombre(d.id);
+    const resp = colaborador || d.responsable || '';
+    const isActive = currentDetailId === d.id;
+    return `<div class="product-item${isActive?' active':''}" onclick="openDetail('${d.id}')">
+      <span class="product-num">${String(num).padStart(2,'0')}</span>
+      <span class="product-name">${esc(d.name)}</span>
+      <span class="badge ${meta[d.status].cls}" style="font-size:10.5px;padding:2px 8px">
+        <span class="badge-dot"></span>${meta[d.status].label}
+      </span>
+      ${resp ? `<span class="product-resp" style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(resp)}">${esc(resp)}</span>` : ''}
+      ${d.fechaActualizColab ? `<span style="font-size:11px;color:var(--muted);white-space:nowrap" title="Últ. actualización colaborador: ${d.fechaActualizColab}">👤 ${new Date(d.fechaActualizColab+'T00:00:00').toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit'})}</span>` : ''}
+      ${(d.fotosColab && d.fotosColab.length) ? `<span style="font-size:11px;font-weight:600;color:#5856D6;background:#EEEDFB;padding:2px 7px;border-radius:10px;white-space:nowrap" title="${d.fotosColab.length} foto(s) de respaldo">📷 ${d.fotosColab.length}</span>` : ''}
+      ${d.fechaActualizSistema ? `<span style="font-size:11px;color:var(--muted);white-space:nowrap" title="Actualización en sistema: ${d.fechaActualizSistema}">🖥 ${new Date(d.fechaActualizSistema+'T00:00:00').toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit'})}</span>` : ''}
+      <span class="product-pct" style="color:${color}">${pct}%</span>
+      <span class="product-rev-dot" style="background:${revDotColor(revInfo.cls)}" title="${revInfo.label}"></span>
+    </div>`;
+  }).join('');
+  updateStats();
+}
+
+/* ══════ BADGES DE FECHA ══════ */
+function fechaBadgeHTML(fecha, tipo){
+  if(!fecha) return `<span class="revision-badge rev-none">🕐 Sin registrar</span>`;
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const f = new Date(fecha+'T00:00:00');
+  const dias = Math.round((hoy - f) / 86400000);
+  const fFmt = f.toLocaleDateString('es-CL',{day:'2-digit',month:'short',year:'numeric'});
+  if(dias === 0) return `<span class="revision-badge rev-ok">✅ Hoy</span>`;
+  if(dias <= 7)  return `<span class="revision-badge rev-ok">✅ Hace ${dias} día${dias===1?'':'s'} — ${fFmt}</span>`;
+  if(dias <= 21) return `<span class="revision-badge rev-warn">⚠️ Hace ${dias} días — ${fFmt}</span>`;
+  return `<span class="revision-badge rev-late">🔴 Hace ${dias} días — ${fFmt}</span>`;
+}
+
+function setFechaHoy(planId, campo, badgeId){
+  const hoy = new Date();
+  const fecha = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}`;
+  const d = data.find(x=>x.id===planId); if(!d) return;
+  d[campo] = fecha;
+  // Update the date input inside the panel
+  const panel = document.getElementById('detail-body');
+  if(panel){
+    panel.querySelectorAll(`input[onchange*="${campo}"]`).forEach(inp => inp.value = fecha);
+  }
+  const badge = document.getElementById(badgeId);
+  if(badge) badge.innerHTML = fechaBadgeHTML(fecha, campo);
+  const nombres = {fechaActualizSistema:'actualización en sistema del archivo', fechaActualizColab:'actualización por colaborador'};
+  saveAll(planId, `Se registró ${nombres[campo]||campo} del planograma "${d.name}"`);
+  renderList();
+}
+
+/* ══════ DETALLE DE PRODUCTO ══════ */
+function openDetail(id){
+  const d = data.find(x=>x.id===id);
+  if(!d) return;
+  currentDetailId = id;
+  const num = data.indexOf(d)+1;
+  const pct = Number(d.avance)||0;
+  const color = barColor(pct);
+  const opts = Object.entries(STATUS_META).map(([k,v])=>`<option value="${k}" ${d.status===k?"selected":""}>${v.label}</option>`).join('');
+  const colaborador = asignadoNombre(d.id);
+  const respValue = colaborador || d.responsable || '';
+  const revInfo = revisionInfo(d.fechaRevision);
+  const revIcons = {'rev-ok':'✅','rev-warn':'⚠️','rev-late':'🔴','rev-none':'🕐'};
+
+  document.getElementById('detail-num').textContent = `#${String(num).padStart(2,'0')}`;
+  document.getElementById('detail-title').textContent = d.name;
+
+  document.getElementById('detail-body').innerHTML = `
+    <div class="field-row"><span class="field-label">Estado</span>
+      <select class="field-select" onchange="updateField('${d.id}','status',this.value)">${opts}</select>
+    </div>
+    <div class="field-row"><span class="field-label">Responsable</span>
+      <div style="flex:1;position:relative">
+        <input class="field-input" type="text" id="det-resp-${d.id}"
+          value="${esc(respValue)}"
+          placeholder="${colaborador?'Asignado desde Asignación…':'Nombre del responsable…'}"
+          style="${colaborador?'background:#E8F8ED;border-color:#34C759;color:#1F8B3A;font-weight:600':''}"
+          ${colaborador?'readonly title="Asignado desde la pestaña Asignación"':''}
+          onchange="updateField('${d.id}','responsable',this.value)"/>
+        ${colaborador?`<span title="Asignado desde Asignación" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:13px">👥</span>`:''}
+      </div>
+    </div>
+
+    <div style="border-top:1px dashed var(--border);padding-top:12px;display:flex;flex-direction:column;gap:8px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Actualizaciones</div>
+      <div class="field-row">
+        <span class="field-label" style="display:flex;align-items:center;gap:5px">
+          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0H3"/></svg>
+          Sist. archivo
+        </span>
+        <input class="field-date" type="date" value="${d.fechaActualizSistema||''}" onchange="updateField('${d.id}','fechaActualizSistema',this.value)" title="Fecha de actualización en sistema del archivo"/>
+        <button class="btn-rev-hoy" onclick="setFechaHoy('${d.id}','fechaActualizSistema','det-sist-badge-${d.id}')" title="Marcar hoy">Hoy</button>
+      </div>
+      <div id="det-sist-badge-${d.id}">${fechaBadgeHTML(d.fechaActualizSistema, 'sist')}</div>
+      <div class="field-row" style="margin-top:2px">
+        <span class="field-label" style="display:flex;align-items:center;gap:5px">
+          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></svg>
+          Últ. colaborador
+        </span>
+        <input class="field-date" type="date" value="${d.fechaActualizColab||''}" onchange="updateField('${d.id}','fechaActualizColab',this.value)" title="Última actualización realizada por el colaborador"/>
+        <button class="btn-rev-hoy" onclick="setFechaHoy('${d.id}','fechaActualizColab','det-colab-badge-${d.id}')" title="Marcar hoy">Hoy</button>
+      </div>
+      <div id="det-colab-badge-${d.id}">${fechaBadgeHTML(d.fechaActualizColab, 'colab')}</div>
+
+      <!-- FOTOS DE RESPALDO COLABORADOR -->
+      <div style="margin-top:6px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Fotos de respaldo</span>
+          <button class="btn-photo-colab" onclick="triggerColabPhoto('${d.id}')">
+            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"/><path stroke-linecap="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z"/></svg>
+            Agregar foto
+          </button>
+        </div>
+        <div id="colab-photos-${d.id}" class="colab-photos-grid">${colabPhotosHTML(d)}</div>
+      </div>
+    </div>
+    <div class="field-row"><span class="field-label">Avance</span>
+      <div style="flex:1;display:flex;align-items:center;gap:7px">
+        <input class="field-input" type="number" min="0" max="100" value="${pct}" style="width:68px;flex:none"
+          onchange="updateField('${d.id}','avance',+this.value)"/>
+        <div class="mini-bar-outer"><div class="mini-bar-inner" id="det-bar-${d.id}" style="width:${pct}%;background:${color}"></div></div>
+        <span class="pct-label" id="det-pct-${d.id}" style="color:${color}">${pct}%</span>
+      </div>
+    </div>
+    <div>
+      <span class="field-label" style="display:block;margin-bottom:5px">Observaciones</span>
+      <textarea class="obs-input" placeholder="Observaciones…" onchange="updateField('${d.id}','obs',this.value)">${esc(d.obs)}</textarea>
+    </div>
+    <div class="revision-block">
+      <div class="revision-row">
+        <span class="field-label" style="min-width:90px">Rev. sistema</span>
+        <input class="field-date" type="date" value="${d.fechaRevision||''}"
+          onchange="updateField('${d.id}','fechaRevision',this.value)" style="flex:1"/>
+        <button class="btn-rev-hoy" onclick="setRevHoy('${d.id}')">Hoy</button>
+      </div>
+      <div id="det-rev-badge-${d.id}"><span class="revision-badge ${revInfo.cls}">${revIcons[revInfo.cls]} ${revInfo.label}</span></div>
+    </div>
+    <div class="detail-saved" id="det-saved-${d.id}">
+      <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+      Cambios guardados
+    </div>`;
+
+  document.getElementById('detail-overlay').classList.add('open');
+  // Highlight in list
+  renderList();
+}
+
+function closeDetail(){
+  document.getElementById('detail-overlay').classList.remove('open');
+  currentDetailId = null;
+  renderList();
+}
+
+function closeDetailFromOverlay(e){
+  if(e.target === document.getElementById('detail-overlay')) closeDetail();
+}
+
+function flashDetailSaved(){
+  const el = document.getElementById(`det-saved-${currentDetailId}`);
+  if(!el) return;
+  el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'), 1800);
+}
+
+/* ══════ UPDATE FIELD ══════ */
+function updateField(id,field,value){
+  const d = data.find(x=>x.id===id); if(!d)return;
+  const oldVal = d[field];
+  d[field] = value;
+  if(field==="avance"){
+    const pct=Math.min(100,Math.max(0,Number(value)||0)); d.avance=pct;
+    const color=barColor(pct);
+    const bar=document.getElementById(`det-bar-${id}`); const lbl=document.getElementById(`det-pct-${id}`);
+    if(bar){bar.style.width=pct+"%";bar.style.background=color;}
+    if(lbl){lbl.textContent=pct+"%";lbl.style.color=color;}
+  }
+  if(field==="fechaRevision"){
+    const badge = document.getElementById(`det-rev-badge-${id}`);
+    if(badge){
+      const revInfo = revisionInfo(value);
+      const revIcons = {'rev-ok':'✅','rev-warn':'⚠️','rev-late':'🔴','rev-none':'🕐'};
+      badge.innerHTML = `<span class="revision-badge ${revInfo.cls}">${revIcons[revInfo.cls]} ${revInfo.label}</span>`;
+    }
+  }
+  if(field==="fechaActualizSistema"){
+    const badge = document.getElementById(`det-sist-badge-${id}`);
+    if(badge) badge.innerHTML = fechaBadgeHTML(value, 'sist');
+  }
+  if(field==="fechaActualizColab"){
+    const badge = document.getElementById(`det-colab-badge-${id}`);
+    if(badge) badge.innerHTML = fechaBadgeHTML(value, 'colab');
+  }
+  const fieldNames = {status:'estado',responsable:'responsable',fechaActual:'fecha actualización',avance:'avance',obs:'observaciones',fechaRevision:'fecha revisión',fechaActualizSistema:'actualización en sistema del archivo',fechaActualizColab:'última actualización por colaborador'};
+  const changeDesc = `Se actualizó ${fieldNames[field]||field} del planograma "${d.name}"`;
+  saveAll(id, changeDesc);
+  renderList();
+  updateStats();
+}
+
+function updateStats(){
+  const counts={pending:0,process:0,done:0,blocked:0};
+  data.forEach(d=>counts[d.status]++);
+  document.getElementById("stat-total").textContent=data.length;
+  document.getElementById("stat-pending").textContent=counts.pending;
+  document.getElementById("stat-process").textContent=counts.process;
+  document.getElementById("stat-done").textContent=counts.done;
+  document.getElementById("stat-blocked").textContent=counts.blocked;
+  const pct=data.length?Math.round((counts.done/data.length)*100):0;
+  document.getElementById("global-bar").style.width=pct+"%";
+  document.getElementById("global-pct").textContent=pct+"%";
+}
+
+/* ══════ FOTO ══════ */
+
+
+/* ══════ FOTOS COLABORADOR ══════ */
+let currentColabPhotoId = null;
+
+function colabPhotosHTML(d){
+  const fotos = d.fotosColab || [];
+  if(!fotos.length){
+    return '<div class="colab-photo-empty">📷 Sin fotos de respaldo aún</div>';
+  }
+  return fotos.map((f,i)=>`
+    <div class="colab-photo-item" onclick="openLightbox('${f.dataURL}')">
+      <img src="${f.dataURL}" alt="Foto ${i+1}"/>
+      <div class="colab-photo-date">${f.fecha||''}</div>
+      <button class="colab-photo-delete" onclick="deleteColabPhoto(event,'${d.id}',${i})">✕</button>
+    </div>`).join('');
+}
+
+function triggerColabPhoto(planId){
+  currentColabPhotoId = planId;
+  const inp = document.getElementById('colab-photo-input');
+  inp.value = ''; inp.click();
+}
+
+function handleColabPhotoUpload(e){
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      const maxW = 1200; let w = img.width, h = img.height;
+      if(w > maxW){ h = Math.round(h * maxW / w); w = maxW; }
+      const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const d = data.find(x => x.id === currentColabPhotoId); if(!d) return;
+      if(!d.fotosColab) d.fotosColab = [];
+      const now = new Date();
+      const pad = n => String(n).padStart(2,'0');
+      const fecha = `${pad(now.getDate())}/${pad(now.getMonth()+1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+      d.fotosColab.push({ dataURL: canvas.toDataURL('image/jpeg', .80), fecha });
+      const grid = document.getElementById(`colab-photos-${d.id}`);
+      if(grid) grid.innerHTML = colabPhotosHTML(d);
+      saveAll(currentColabPhotoId, `Se agregó foto de respaldo al planograma "${d.name}"`);
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function deleteColabPhoto(e, planId, idx){
+  e.stopPropagation();
+  if(!confirm('¿Eliminar esta foto de respaldo?')) return;
+  const d = data.find(x => x.id === planId); if(!d || !d.fotosColab) return;
+  d.fotosColab.splice(idx, 1);
+  const grid = document.getElementById(`colab-photos-${planId}`);
+  if(grid) grid.innerHTML = colabPhotosHTML(d);
+  saveAll(planId, `Se eliminó foto de respaldo del planograma "${d.name}"`);
+}
+
+function openLightbox(src){
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('photo-lightbox').classList.add('open');
+}
+function closeLightbox(){
+  document.getElementById('photo-lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+
+/* ══════ REVISIÓN HOY ══════ */
+function setRevHoy(id){
+  const hoy = new Date();
+  const fecha = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}`;
+  const d = data.find(x=>x.id===id); if(!d)return;
+  d.fechaRevision = fecha;
+  const dateInput = document.querySelector(`[onchange*="fechaRevision"][onchange*="${id}"]`);
+  if(dateInput) dateInput.value = fecha;
+  const badge = document.getElementById(`det-rev-badge-${id}`);
+  if(badge){
+    const revInfo = revisionInfo(fecha);
+    badge.innerHTML = `<span class="revision-badge ${revInfo.cls}">✅ ${revInfo.label}</span>`;
+  }
+  saveAll(id, `Se registró revisión en sistema del planograma "${d.name}"`);
+  renderList();
+}
+
+/* ══════ VENDEDORES / COLABORADORES ══════ */
+const COLAB_COLORS = [
+  '#007AFF','#34C759','#FF9500','#AF52DE','#FF2D55','#30B0C7','#5856D6','#8E8E93'
+];
+function colabColor(idx){ return COLAB_COLORS[idx % COLAB_COLORS.length]; }
+function colabInitials(name){ return name.trim().split(/\s+/).map(w=>w[0]).join('').slice(0,2).toUpperCase(); }
+
+/* ── Modal agregar/editar colaborador ── */
+let editingColabId = null;
+function openAddColabModal(editId){
+  editingColabId = editId || null;
+  const inp = document.getElementById('add-colab-input');
+  const title = document.getElementById('add-colab-title');
+  const btn   = document.getElementById('add-colab-confirm-btn');
+  if(editId){
+    const v = vendedores.find(x=>x.id===editId);
+    inp.value = v ? v.name : '';
+    title.textContent = 'Editar colaborador';
+    btn.textContent = 'Guardar cambios';
+  } else {
+    inp.value = '';
+    title.textContent = 'Nuevo colaborador';
+    btn.textContent = 'Agregar';
+  }
+  document.getElementById('add-colab-modal-backdrop').classList.add('open');
+  setTimeout(()=>inp.focus(),80);
+}
+function closeAddColabModal(e){ if(e && e.target!==e.currentTarget) return; closeAddColabModalBtn(); }
+function closeAddColabModalBtn(){ document.getElementById('add-colab-modal-backdrop').classList.remove('open'); editingColabId=null; }
+function confirmAddColab(){
+  const inp  = document.getElementById('add-colab-input');
+  const name = inp.value.trim();
+  if(!name) return;
+  if(editingColabId){
+    const v = vendedores.find(x=>x.id===editingColabId);
+    if(v){ v.name=name; saveAll(undefined,`Se renombró colaborador a: ${name}`); }
+  } else {
+    const id = 'v'+Date.now();
+    vendedores.push({id,name}); asignaciones[id]=new Set();
+    saveAll(undefined,`Se agregó colaborador: ${name}`);
+  }
+  closeAddColabModalBtn();
+  renderAsign();
+  showToast(editingColabId ? '✏️ Colaborador actualizado' : '👤 Colaborador agregado');
+}
+
+function deleteVendedor(id){
+  const v = vendedores.find(x=>x.id===id);
+  if(!confirm(`¿Eliminar a "${v?.name||'este colaborador'}" y sus asignaciones?`)) return;
+  vendedores=vendedores.filter(v=>v.id!==id);
+  delete asignaciones[id]; delete firmas[id];
+  if(selectedVend===id) selectedVend=null;
+  saveAll(undefined,`Se eliminó colaborador: ${v?.name||id}`);
+  renderAsign();
+  showToast('🗑 Colaborador eliminado');
+}
+
+/* ── Modal asignación rápida ── */
+let amVendId = null;
+let amDraft  = new Set();  // copia de trabajo
+
+function openAsignModal(vendId){
+  amVendId = vendId;
+  const ae = asignaciones[vendId]; amDraft = ae instanceof Set ? new Set(ae) : new Set(Array.isArray(ae) ? ae : []);
+  const v  = vendedores.find(x=>x.id===vendId);
+  document.getElementById('am-title').textContent    = v ? v.name : 'Colaborador';
+  document.getElementById('am-search').value         = '';
+  document.getElementById('asign-modal-backdrop').classList.add('open');
+  renderAmList();
+  setTimeout(()=>document.getElementById('am-search').focus(),80);
+}
+function closeAsignModal(e){ if(e && e.target!==e.currentTarget) return; closeAsignModalBtn(); }
+function closeAsignModalBtn(){ document.getElementById('asign-modal-backdrop').classList.remove('open'); amVendId=null; }
+
+function renderAmList(){
+  const q      = (document.getElementById('am-search').value||'').trim().toLowerCase();
+  const list   = document.getElementById('am-list');
+  const footer = document.getElementById('am-footer-count');
+  if(!data.length){ list.innerHTML=`<div class="am-empty">No hay planogramas en la lista maestra.</div>`; return; }
+
+  const assigned   = data.filter(d=>amDraft.has(d.id));
+  const unassigned = data.filter(d=>!amDraft.has(d.id));
+
+  function itemHTML(d){
+    const checked = amDraft.has(d.id);
+    const visible = !q || d.name.toLowerCase().includes(q);
+    if(!visible) return '';
+    return `<div class="am-item ${checked?'checked':''}" onclick="amToggle('${d.id}')">
+      <div class="am-check"><svg class="am-check-icon" width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3.5"><path stroke-linecap="round" d="M4.5 12.75l6 6 9-13.5"/></svg></div>
+      <span class="am-item-name">${esc(d.name)}</span>
+    </div>`;
+  }
+
+  let html = '';
+  if(!q){
+    const aHTML = assigned.map(itemHTML).join('');
+    const uHTML = unassigned.map(itemHTML).join('');
+    if(aHTML) html += `<div class="am-section-label">✅ Asignados (${assigned.length})</div>${aHTML}`;
+    if(uHTML) html += `<div class="am-section-label" style="margin-top:${aHTML?'8px':'0'}">Sin asignar</div>${uHTML}`;
+  } else {
+    html = data.map(itemHTML).join('');
+    if(!html) html = `<div class="am-empty">Sin resultados para "<strong>${esc(q)}</strong>"</div>`;
+  }
+  list.innerHTML = html || `<div class="am-empty">No hay planogramas.</div>`;
+  footer.innerHTML = `<strong>${amDraft.size}</strong> planograma${amDraft.size!==1?'s':''} asignado${amDraft.size!==1?'s':''}`;
+}
+
+function amToggle(planId){
+  if(amDraft.has(planId)) amDraft.delete(planId);
+  else amDraft.add(planId);
+  renderAmList();
+}
+
+function saveAsignModal(){
+  if(!amVendId) return;
+  asignaciones[amVendId] = new Set(amDraft);
+  const v = vendedores.find(x=>x.id===amVendId);
+  saveAll(undefined, `Se actualizaron asignaciones de: ${v?.name||amVendId}`);
+  renderAsign();
+  renderList();
+  const resGrid = document.getElementById('resumen-container');
+  if(resGrid && resGrid.children.length) renderResumen();
+  closeAsignModalBtn();
+  showToast(`✅ Asignaciones guardadas`);
+}
+
+/* ── Quitar planograma desde tag en card ── */
+function removePlanTag(vendId, planId){
+  if(!asignaciones[vendId]) return;
+  asignaciones[vendId].delete(planId);
+  const v = vendedores.find(x=>x.id===vendId);
+  const p = data.find(d=>d.id===planId);
+  saveAll(undefined, `Se quitó "${p?.name||planId}" de ${v?.name||vendId}`);
+  renderAsign();
+  showToast('🗑 Planograma quitado');
+}
+
+/* ── Toast ── */
+let toastTimer = null;
+function showToast(msg){
+  const t = document.getElementById('asign-toast');
+  const m = document.getElementById('asign-toast-msg');
+  m.textContent = msg;
+  t.classList.add('show');
+  if(toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2400);
+}
+
+/* ── Eliminar planograma ── */
+function deletePlanograma(planId){
+  const plan = data.find(d=>d.id===planId);
+  if(!confirm("¿Eliminar este planograma de la lista?"))return;
+  data = data.filter(d=>d.id!==planId);
+  for(const k in asignaciones) asignaciones[k].delete(planId);
+  saveAll(undefined, `Se eliminó planograma: ${plan?.name||planId}`);
+  renderList(); renderAsign(); renderPlanList();
+}
+
+/* ── Resumen de progreso de asignación ── */
+function renderAsignSummary(){
+  const box = document.getElementById('asign-summary');
+  if(!box) return;
+  const total = data.length;
+  if(!total){
+    box.innerHTML = `<div style="font-size:13px;color:var(--muted)">Agrega planogramas arriba para empezar a asignarlos a colaboradores.</div>`;
+    return;
+  }
+  const assignedIds = new Set();
+  for(const k in asignaciones){
+    const s = asignaciones[k];
+    if(s instanceof Set) s.forEach(id=>assignedIds.add(id));
+  }
+  const assignedCount = data.filter(d=>assignedIds.has(d.id)).length;
+  const unassignedCount = total - assignedCount;
+  const pct = Math.round((assignedCount/total)*100);
+  const color = pct>=100 ? '#34C759' : pct>=50 ? '#007AFF' : '#FF9500';
+  box.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div style="font-size:13px;color:var(--text)">
+        <strong style="color:${color}">${assignedCount}</strong> de <strong>${total}</strong> planogramas asignados
+        ${unassignedCount>0 ? `<span style="color:var(--muted)"> · ${unassignedCount} sin asignar aún</span>` : `<span style="color:#34C759;font-weight:600"> · ¡Todo asignado! ✅</span>`}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;min-width:160px">
+        <div class="progress-bar-outer" style="flex:1"><div class="progress-bar-inner" style="width:${pct}%;background:${color}"></div></div>
+        <span style="font-size:13px;font-weight:700;color:${color};min-width:34px;text-align:right">${pct}%</span>
+      </div>
+    </div>`;
+}
+
+/* ── Render principal de tarjetas ── */
+function renderAsign(){
+  const grid = document.getElementById('colab-cards-grid');
+  if(!grid) return;
+  // Mantener sincronizado el contador y, si está abierto, el listado de planogramas
+  const countLabel = document.getElementById('plan-count-label');
+  if(countLabel) countLabel.textContent = data.length;
+  if(planListOpen) renderPlanList();
+  renderAsignSummary();
+
+  let html = '';
+  vendedores.forEach((v,idx)=>{
+    const color    = colabColor(idx);
+    const initials = colabInitials(v.name);
+    const rawEntry = asignaciones[v.id];
+    const asigSet   = rawEntry instanceof Set ? rawEntry : new Set(Array.isArray(rawEntry) ? rawEntry : []);
+    const planIds  = [...asigSet];
+    const plans    = planIds.map(id=>data.find(d=>d.id===id)).filter(Boolean);
+    const count    = plans.length;
+
+    const tagsHTML = plans.length
+      ? plans.map(p=>`<span class="plan-tag">
+          ${esc(p.name)}
+          <button class="plan-tag-del" title="Quitar" onclick="removePlanTag('${v.id}','${p.id}')">✕</button>
+        </span>`).join('')
+      : `<span class="colab-card-empty">Sin planogramas asignados</span>`;
+
+    html += `
+    <div class="colab-card">
+      <div class="colab-card-header">
+        <div class="colab-avatar" style="background:${color}">${esc(initials)}</div>
+        <div class="colab-card-name-wrap">
+          <div class="colab-card-name">${esc(v.name)}</div>
+          <div class="colab-card-count">${count} planograma${count!==1?'s':''} asignado${count!==1?'s':''}</div>
+        </div>
+        <div class="colab-card-actions">
+          <button class="btn-edit-colab" title="Editar nombre" onclick="openAddColabModal('${v.id}')">✏️</button>
+          <button class="btn-del-colab"  title="Eliminar colaborador" onclick="deleteVendedor('${v.id}')">✕</button>
+        </div>
+      </div>
+      <div class="colab-card-body">
+        <div class="colab-tags">${tagsHTML}</div>
+        <button class="btn-assign" onclick="openAsignModal('${v.id}')">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" d="M12 4v16m8-8H4"/></svg>
+          Editar planogramas asignados
+        </button>
+      </div>
+    </div>`;
+  });
+
+  // Tarjeta "+" para agregar nuevo
+  html += `<div class="colab-card colab-card-add" onclick="openAddColabModal()">
+    <div class="colab-card-add-icon">👤</div>
+    <div class="colab-card-add-label">+ Agregar colaborador</div>
+  </div>`;
+
+  grid.innerHTML = html;
+}
+
+/* stub para compatibilidad con funciones que llaman renderAsign vía saveAsignacion */
+function saveAsignacion(){ saveAll(undefined,'Asignaciones guardadas'); renderList(); renderAsign(); }
+function selectVend(id){ /* no-op en nuevo sistema */ }
+function toggleAddVend(){ openAddColabModal(); }
+function addVendedor(){
+  const inp=document.getElementById("vend-name-input");
+  if(!inp) return;
+  const name=inp.value.trim(); if(!name)return;
+  const id="v"+Date.now();
+  vendedores.push({id,name}); asignaciones[id]=new Set();
+  inp.value="";
+  saveAll(undefined, `Se agregó colaborador: ${name}`);
+  renderAsign();
+}
+function markChange(){ /* no-op */ }
+
+function applyImport(imp){
+  if(imp.data){
+    data=imp.data; vendedores=imp.vendedores||[];
+    asignaciones={}; const rawA=imp.asignaciones||{};
+    for(const k in rawA) asignaciones[k]=new Set(rawA[k]);
+    firmas=imp.firmas||{};
+    historial=imp.historial||historial;
+    resumenMeta=imp.resumenMeta||resumenMeta;
+    const localEl=document.getElementById('res-local');
+    const quimicoEl=document.getElementById('res-quimico');
+    if(localEl) localEl.value=resumenMeta.local||'';
+    if(quimicoEl) quimicoEl.value=resumenMeta.quimico||'';
+    saveAll(undefined, 'Se importaron datos desde archivo externo');
+    renderList(); renderAsign();
+    document.getElementById("resumen-container").innerHTML="";
+  } else { alert("Archivo no válido."); }
+}
+
+/* ══════ GUÍA RÁPIDA / AYUDA ══════ */
+const HELP_SK = "planogramas_help_dismissed_v1";
+function openHelp(){ document.getElementById("modal-help").classList.add("open"); }
+function closeHelp(){
+  document.getElementById("modal-help").classList.remove("open");
+  if(document.getElementById("help-dont-show-chk").checked){
+    try{ localStorage.setItem(HELP_SK, "1"); }catch(e){}
+  }
+}
+document.getElementById("modal-help").addEventListener("click", e=>{ if(e.target===e.currentTarget) closeHelp(); });
+
+/* Cerrar overlays/modales con tecla Escape */
+document.addEventListener("keydown", e=>{
+  if(e.key !== "Escape") return;
+  const openOverlays = [
+    ["detail-overlay","closeDetail"], ["modal-help","closeHelp"], ["modal-reset","closeModal"],
+    ["asign-modal-backdrop","closeAsignModalBtn"], ["add-colab-modal-backdrop","closeAddColabModalBtn"],
+    ["edit-plan-modal-backdrop","closeEditPlanModalBtn"]
+  ];
+  for(const [id, fn] of openOverlays){
+    const el = document.getElementById(id);
+    if(el && el.classList.contains("open") && typeof window[fn]==="function"){ window[fn](); break; }
+  }
+});
+
+/* ══════ RESET ══════ */
+function confirmReset(){ document.getElementById("modal-reset").classList.add("open") }
+function closeModal(){ document.getElementById("modal-reset").classList.remove("open") }
+function doReset(){
+  data=defaultData(); vendedores=[]; asignaciones={}; firmas={}; historial=[]; resumenMeta={local:'',quimico:''};
+  selectedVend=null;
+  const localEl=document.getElementById('res-local'); if(localEl) localEl.value='';
+  const quimicoEl=document.getElementById('res-quimico'); if(quimicoEl) quimicoEl.value='';
+  saveAll(undefined, 'Se reiniciaron todos los datos');
+  closeModal(); renderList(); renderAsign();
+  document.getElementById("resumen-container").innerHTML="";
+}
+document.getElementById("modal-reset").addEventListener("click",e=>{ if(e.target===e.currentTarget)closeModal(); });
+
+/* ══════ RENDER RESUMEN ══════ */
+function renderResumen(){
+  const container = document.getElementById("resumen-container");
+  if(!vendedores.length){
+    container.innerHTML=`<div class="no-vend">No hay colaboradores registrados.<br>Ve a <strong>Asignación</strong> para agregar colaboradores.</div>`;
+    return;
+  }
+
+  const fecha = new Date().toLocaleDateString("es-CL",{day:"2-digit",month:"long",year:"numeric"});
+  const totalPlans = data.length;
+  const localNum = resumenMeta.local || '';
+  const quimico = resumenMeta.quimico || '';
+
+  let rowsHTML = '';
+  vendedores.forEach((v, vi) => {
+    const colorIdx = vi % 8;
+    const ids    = [...(asignaciones[v.id]||[])];
+    const planes = ids.map(id=>data.find(d=>d.id===id)).filter(Boolean);
+    const firma  = firmas[v.id];
+    const count  = planes.length;
+    const rowCount = Math.ceil(count / 2);
+
+    const signCell = `
+      <td class="td-sign" rowspan="${rowCount||1}">
+        <div class="sign-inner-label">FIRMA DE CONFORMIDAD</div>
+        <div class="firma-canvas-wrap"><canvas class="firma-canvas" id="sign-${v.id}" width="400" height="56"></canvas></div>
+        <div class="firma-sign-actions no-print">
+          <button class="btn-clear-sign" onclick="clearSign('${v.id}')">✕ Borrar</button>
+          <span class="signed-tag ${firma?'show':''}" id="signed-tag-${v.id}">✔ Firmado</span>
+        </div>
+        <div class="sign-fields-row">
+          <div class="sign-field"><div class="sign-field-label">RUT</div><div class="sign-field-line"></div></div>
+          <div class="sign-field"><div class="sign-field-label">Fecha Asignación</div><div class="sign-field-line" id="sign-date-${v.id}">${firma?firma.fecha:''}</div></div>
+        </div>
+      </td>`;
+
+    const nameCell = `
+      <td class="td-colab-name" rowspan="${rowCount||1}">
+        ${esc(v.name.toUpperCase())}
+      </td>`;
+
+    if(!count){
+      rowsHTML += `
+      <tr class="colab-${colorIdx}">
+        ${nameCell}
+        <td class="td-plan-num last">—</td>
+        <td class="td-plan-name last" colspan="3" style="color:var(--muted);font-style:italic">Sin planogramas asignados</td>
+        ${signCell}
+      </tr>
+      <tr class="tr-spacer"><td colspan="6"></td></tr>`;
+      return;
+    }
+
+    for(let row = 0; row < rowCount; row++){
+      const isFirst = row === 0;
+      const isLast  = row === rowCount - 1;
+      const p1 = planes[row * 2];
+      const p2 = planes[row * 2 + 1];
+
+      rowsHTML += `<tr class="colab-${colorIdx}">`;
+      if(isFirst) rowsHTML += nameCell;
+
+      rowsHTML += `
+        <td class="td-plan-num${isLast?' last':''}">${row*2+1}</td>
+        <td class="td-plan-name${isLast?' last':''}">${p1.name}</td>`;
+
+      if(p2){
+        rowsHTML += `
+        <td class="td-plan-num${isLast?' last':''}">${row*2+2}</td>
+        <td class="td-plan-name${isLast?' last':''}">${p2.name}</td>`;
+      } else {
+        rowsHTML += `<td class="td-plan-num last"></td><td class="td-plan-name last"></td>`;
+      }
+
+      if(isFirst) rowsHTML += signCell;
+      rowsHTML += `</tr>`;
+    }
+
+    rowsHTML += `<tr class="tr-spacer"><td colspan="6"></td></tr>`;
+  });
+
+  container.innerHTML = `
+  <div class="doc-wrap">
+    <div class="doc-title-block">
+      <h3>📋 ASIGNACIÓN DE PLANOGRAMAS</h3>
+      <div class="doc-local-info">
+        ${localNum ? `<span>🏪 Local N° ${esc(localNum)}</span>` : ''}
+        ${quimico  ? `<span>👩‍⚕️ Q.F.: ${esc(quimico)}</span>` : ''}
+      </div>
+      <div class="doc-meta">
+        <span>Fecha: ${fecha}</span>
+        <span>${totalPlans} planogramas en total</span>
+        <span>${vendedores.length} colaboradores</span>
+      </div>
+    </div>
+    <div class="resp-banner">
+      <span class="resp-item">
+        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        RESPONSABILIDADES:
+      </span>
+      <span class="resp-item">
+        <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+        REPOSICIÓN – ORDEN BODEGA – PRECIOS
+      </span>
+      <span class="resp-item">
+        <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
+        LIMPIEZA PRODUCTOS Y GÓNDOLA
+      </span>
+    </div>
+    <table class="asign-doc-table">
+      <thead>
+        <tr>
+          <th style="width:110px">Colaborador</th>
+          <th style="width:24px">#</th>
+          <th>Planograma</th>
+          <th style="width:24px">#</th>
+          <th>Planograma</th>
+          <th class="th-sign">Firma</th>
+        </tr>
+      </thead>
+      <tbody>${rowsHTML}</tbody>
+    </table>
+    <div class="doc-footer-legal">
+      La información contenida en este documento tiene como finalidad apoyar la optimización de la distribución de tareas, la planificación operativa y la mejora continua de los procesos del local. Los resultados deben utilizarse como apoyo para la gestión y toma de decisiones internas.
+    </div>
+  </div>`;
+
+  vendedores.forEach(v => initCanvas(v.id));
+}
+
+/* ══════ CANVAS FIRMA ══════ */
+function initCanvas(vendId){
+  const canvas=document.getElementById(`sign-${vendId}`); if(!canvas)return;
+  const ctx=canvas.getContext("2d");
+  const resize=()=>{
+    const rect=canvas.getBoundingClientRect();
+    const dpr=window.devicePixelRatio||1;
+    canvas.width=rect.width*dpr; canvas.height=rect.height*dpr;
+    ctx.scale(dpr,dpr);
+    ctx.strokeStyle="#1A2533"; ctx.lineWidth=2.2; ctx.lineCap="round"; ctx.lineJoin="round";
+    if(firmas[vendId]){
+      const img=new Image();
+      img.onload=()=>ctx.drawImage(img,0,0,rect.width,rect.height);
+      img.src=firmas[vendId].dataURL;
+    }
+  };
+  resize();
+  let drawing=false;
+  function getPos(e){ const r=canvas.getBoundingClientRect(); const s=e.touches?e.touches[0]:e; return{x:s.clientX-r.left,y:s.clientY-r.top}; }
+  function start(e){ e.preventDefault(); drawing=true; const p=getPos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); }
+  function move(e){ e.preventDefault(); if(!drawing)return; const p=getPos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); }
+  function end(){ if(!drawing)return; drawing=false;
+    const fecha=new Date().toLocaleDateString("es-CL",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
+    firmas[vendId]={dataURL:canvas.toDataURL(),fecha};
+    scheduleAutosave(`Se registró firma del colaborador`);
+    scheduleSheetsSync();
+    const tag=document.getElementById(`signed-tag-${vendId}`); if(tag)tag.classList.add("show");
+    const dateEl=document.getElementById(`sign-date-${vendId}`); if(dateEl)dateEl.textContent=fecha;
+  }
+  canvas.addEventListener("mousedown",start);
+  canvas.addEventListener("mousemove",move);
+  canvas.addEventListener("mouseup",end);
+  canvas.addEventListener("mouseleave",end);
+  canvas.addEventListener("touchstart",start,{passive:false});
+  canvas.addEventListener("touchmove",move,{passive:false});
+  canvas.addEventListener("touchend",end);
+}
+
+function clearSign(vendId){
+  const canvas=document.getElementById(`sign-${vendId}`); if(!canvas)return;
+  const ctx=canvas.getContext("2d");
+  const r=canvas.getBoundingClientRect(); ctx.clearRect(0,0,r.width,r.height);
+  delete firmas[vendId];
+  scheduleAutosave('Se borró firma de colaborador');
+  scheduleSheetsSync();
+  const tag=document.getElementById(`signed-tag-${vendId}`); if(tag)tag.classList.remove("show");
+  const dateEl=document.getElementById(`sign-date-${vendId}`); if(dateEl)dateEl.textContent="";
+}
+
+/* ══════ AJUSTE AUTOMÁTICO PARA IMPRIMIR EN 1 HOJA CARTA ══════ */
+/* Mide el contenido real (ya con los tamaños de impresión aplicados) y,
+   solo si no entra completo en la hoja carta, lo reduce con un transform
+   scale proporcional (sin deformar) para que SIEMPRE quepa en una sola
+   página. Si el contenido ya cabe a tamaño normal, no se toca nada. */
+function ajustarImpresionUnaHoja(){
+  const docWrap   = document.querySelector('#tab-resumen .doc-wrap');
+  const container = document.getElementById('resumen-container');
+  if(!docWrap || !container) return;
+
+  // Reset de cualquier ajuste previo antes de medir
+  docWrap.style.transform = 'none';
+  docWrap.style.width      = '';
+  container.style.height   = '';
+  container.style.overflow = '';
+
+  // Área imprimible real según @page (size:letter; margin:6mm 8mm)
+  const PX_POR_MM = 96/25.4; // equivalencia estándar CSS (96dpi)
+  const MARGEN_FACTOR_SEGURIDAD = 0.94; // colchón amplio: tolera diferencias de márgenes reales del navegador/impresora
+  const altoMaxPx  = (279.4 - 2*6) * PX_POR_MM * MARGEN_FACTOR_SEGURIDAD;
+  const anchoMaxPx = (215.9 - 2*8) * PX_POR_MM * MARGEN_FACTOR_SEGURIDAD;
+
+  const altoReal  = docWrap.offsetHeight;
+  const anchoReal = docWrap.offsetWidth;
+  if(!altoReal || !anchoReal) return;
+
+  // Piso mínimo de escala para que el texto nunca quede ilegible.
+  // Si hubiera demasiado contenido como para entrar incluso a este
+  // tamaño mínimo, prevalece "quepa en una hoja" y se aplica igual.
+  const ESCALA_MINIMA = 0.65;
+  let escala = Math.min(anchoMaxPx/anchoReal, altoMaxPx/altoReal, 1);
+  if(escala < ESCALA_MINIMA) escala = ESCALA_MINIMA;
+
+  if(escala < 1){
+    // Si solo escalamos, el resultado queda más angosto que la hoja
+    // (espacio en blanco a la derecha). Para que ocupe TODO el ancho,
+    // primero ensanchamos el documento en la proporción inversa a la
+    // escala: al aplicar luego scale(escala), el ancho final vuelve a
+    // ocupar el 100% de la hoja (igual que el alto).
+    docWrap.style.width = (100/escala) + '%';
+
+    docWrap.style.transformOrigin = 'top left';
+    docWrap.style.transform = `scale(${escala})`;
+    // El contenedor debe "encogerse" también para que el motor de
+    // impresión no reserve el alto original (lo que generaría una 2ª hoja en blanco)
+    container.style.height   = (altoReal*escala) + 'px';
+    container.style.overflow = 'hidden';
+  }
+}
+
+function restaurarImpresion(){
+  const docWrap   = document.querySelector('#tab-resumen .doc-wrap');
+  const container = document.getElementById('resumen-container');
+  if(docWrap){ docWrap.style.transform = ''; docWrap.style.width = ''; }
+  if(container){ container.style.height = ''; container.style.overflow = ''; }
+}
+
+// Cubre tanto el botón "Imprimir / PDF" como Ctrl+P / menú del navegador
+window.addEventListener('beforeprint', ajustarImpresionUnaHoja);
+window.addEventListener('afterprint', restaurarImpresion);
+
+/* ══════ GOOGLE SHEETS SYNC ══════ */
+// 👉 Pega aquí la URL de tu Web App de Google Apps Script (termina en /exec)
+// La obtienes al hacer "Implementar → Nueva implementación" en script.google.com
+const SHEETS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwAarJECob8IbFu-W4nMU_Gnqq4HwfLRfFfTdVJLjz5DFkPoaJUY2WOkjMw7kfpYgYBrQ/exec';
+
+let sheetsUrl    = SHEETS_WEBAPP_URL && SHEETS_WEBAPP_URL.startsWith('http') ? SHEETS_WEBAPP_URL : '';
+let lastSyncTime = localStorage.getItem('lastSyncTime') || '';
+let sheetsTimer  = null;   // timer del debounce hacia Sheets
+let isSyncing    = false;  // evita envíos/cargas simultáneos que duplican filas en Sheets
+
+function initSheetsTab(){
+  updateSyncLastTime();
+  if(!sheetsUrl){
+    setSyncStatus('err','Aún no se ha configurado la URL del Web App en el código (constante SHEETS_WEBAPP_URL).');
+  }
+}
+
+/** Verifica si hay datos locales guardados y muestra el banner de advertencia */
+async function checkLocalDataBanner(){
+  const banner = document.getElementById('clear-local-banner');
+  if(!banner) return;
+  let hasLocal = false;
+  // Chequear window.storage
+  if(window.storage){
+    try {
+      const r = await window.storage.get(SK);
+      if(r && r.value) hasLocal = true;
+    } catch(e){}
+  }
+  // Chequear localStorage
+  if(!hasLocal){
+    try { if(localStorage.getItem(SK)) hasLocal = true; } catch(e){}
+  }
+  banner.style.display = hasLocal ? 'block' : 'none';
+}
+
+/** Elimina todos los datos locales guardados (window.storage y localStorage) */
+async function clearLocalData(){
+  if(!confirm('¿Eliminar todos los datos guardados localmente? Esta acción no se puede deshacer.\n\nPodrás recargar los datos desde Google Sheets a continuación.')) return;
+  // Borrar window.storage
+  if(window.storage){
+    try { await window.storage.delete(SK); } catch(e){}
+  }
+  // Borrar localStorage
+  try { localStorage.removeItem(SK); } catch(e){}
+  // Reiniciar estado en memoria
+  data = defaultData(); vendedores = []; asignaciones = {}; firmas = {}; historial = []; resumenMeta = {local:'',quimico:''};
+  selectedVend = null;
+  const localEl = document.getElementById('res-local'); if(localEl) localEl.value = '';
+  const quimicoEl = document.getElementById('res-quimico'); if(quimicoEl) quimicoEl.value = '';
+  renderList(); renderAsign(); renderHistorial();
+  const banner = document.getElementById('clear-local-banner');
+  if(banner) banner.style.display = 'none';
+  setSyncStatus('ok', 'Datos locales eliminados. Ahora puedes cargar desde Google Sheets.');
+}
+
+function setSyncStatus(type, msg){
+  const el = document.getElementById('sync-status');
+  if(!el) return;
+  el.className = 'sync-status show ' + type;
+  el.innerHTML = {
+    loading: '🔄 ',
+    ok:      '✅ ',
+    err:     '❌ '
+  }[type] + msg;
+}
+
+function updateSyncLastTime(){
+  const el = document.getElementById('sync-last-time');
+  if(el) el.textContent = lastSyncTime ? `Última sincronización: ${lastSyncTime}` : '';
+}
+
+/** Construye el payload para enviar a Sheets (sin fotos) */
+function buildSyncPayload(){
+  const rawA = {};
+  for(const k in asignaciones) rawA[k] = [...asignaciones[k]];
+  return {
+    data: data.map(d => {
+      const clean = {...d};
+      delete clean.fotosColab;
+      // Resolver responsable: prioriza colaborador asignado desde pestaña Asignación
+      clean.responsable = asignadoNombre(d.id) || d.responsable || '';
+      return clean;
+    }),
+    vendedores,
+    asignaciones: rawA,
+    resumenMeta,
+    historial
+  };
+}
+
+/** Enviar datos → Google Sheets */
+async function syncPush(){
+  if(!sheetsUrl){ setSyncStatus('err','Ingresa primero la URL del Web App.'); return; }
+  if(isSyncing){ setSyncStatus('loading','Ya hay una sincronización en curso, espera unos segundos…'); return; }
+  isSyncing = true;
+  setSyncStatus('loading','Enviando datos a Google Sheets…');
+  try {
+    // Enviamos como text/plain para evitar preflight CORS.
+    // Apps Script recibe el cuerpo en e.postData.contents igual.
+    const payload = JSON.stringify(buildSyncPayload());
+    // Enviamos como form-encoded: Apps Script lo recibe en e.parameter.payload
+    // sin necesidad de preflight CORS y sin que Google redirija y borre el cuerpo
+    const res = await fetch(sheetsUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'payload=' + encodeURIComponent(payload)
+    });
+    const json = await res.json().catch(() => null);
+    if(!json) throw new Error('El servidor no devolvió una respuesta válida. Verifica que el Web App esté desplegado.');
+    if(json.ok === false) throw new Error(json.error || 'Error en el servidor');
+    const now = fmtDateTime();
+    lastSyncTime = now;
+    localStorage.setItem('lastSyncTime', now);
+    updateSyncLastTime();
+    setSyncStatus('ok','Datos enviados correctamente a Google Sheets ✓');
+    addHistorialEntry('Se sincronizaron datos con Google Sheets (envío)');
+  } catch(e){
+    setSyncStatus('err','Error al enviar: ' + e.message);
+  } finally {
+    isSyncing = false;
+  }
+}
+
+/** Cargar datos ← Google Sheets */
+async function syncPull(){
+  if(!sheetsUrl){ setSyncStatus('err','Ingresa primero la URL del Web App.'); return; }
+  if(isSyncing){ setSyncStatus('loading','Ya hay una sincronización en curso, espera unos segundos…'); return; }
+  isSyncing = true;
+  setSyncStatus('loading','Cargando datos desde Google Sheets…');
+  try {
+    const res  = await fetch(sheetsUrl + '?t=' + Date.now());
+    const json = await res.json();
+    if(!json.ok) throw new Error(json.error || 'Respuesta inválida');
+
+    // Merge: preservar fotos locales
+    const localPhotos = {};
+    data.forEach(d => { localPhotos[d.id] = { fotosColab: d.fotosColab || [] }; });
+
+    data       = json.data || defaultData();
+    vendedores = json.vendedores || [];
+    asignaciones = {};
+    const rawA = json.asignaciones || {};
+    for(const k in rawA) asignaciones[k] = new Set(rawA[k]);
+    resumenMeta = json.resumenMeta || {local:'',quimico:''};
+    if(json.historial && json.historial.length) historial = json.historial;
+
+    // Restaurar fotos locales
+    data.forEach(d => {
+      if(localPhotos[d.id]){
+        d.fotosColab = localPhotos[d.id].fotosColab || [];
+      }
+    });
+
+    // Actualizar campos del resumen
+    const localEl   = document.getElementById('res-local');
+    const quimicoEl = document.getElementById('res-quimico');
+    if(localEl)   localEl.value   = resumenMeta.local   || '';
+    if(quimicoEl) quimicoEl.value = resumenMeta.quimico || '';
+
+    const now = fmtDateTime();
+    lastSyncTime = now;
+    localStorage.setItem('lastSyncTime', now);
+    updateSyncLastTime();
+    setSyncStatus('ok','Datos cargados correctamente desde Google Sheets.');
+    addHistorialEntry('Se sincronizaron datos con Google Sheets (carga)');
+    saveAll(); renderList(); renderAsign(); renderHistorial();
+
+  } catch(e){
+    setSyncStatus('err','Error: ' + e.message);
+  } finally {
+    isSyncing = false;
+  }
+}
+
+/** Debounce de sincronización automática con Sheets (3 s tras el último cambio) */
+function scheduleSheetsSync(){
+  if(!sheetsUrl) return;
+  if(sheetsTimer) clearTimeout(sheetsTimer);
+  sheetsTimer = setTimeout(doSheetsSync, 3000);
+}
+
+async function doSheetsSync(){
+  if(!sheetsUrl) return;
+  if(isSyncing) { scheduleSheetsSync(); return; } // reintenta más tarde si hay otra sync en curso
+  isSyncing = true;
+  try {
+    const payload = JSON.stringify(buildSyncPayload());
+    const res  = await fetch(sheetsUrl, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body:    'payload=' + encodeURIComponent(payload)
+    });
+    const json = await res.json().catch(() => null);
+    if(json && json.ok !== false){
+      const now = fmtDateTime();
+      lastSyncTime = now;
+      localStorage.setItem('lastSyncTime', now);
+      updateSyncLastTime();
+    }
+  } catch(e){ /* silencioso — reintento en el próximo cambio */ }
+  finally {
+    isSyncing = false;
+  }
+}
+
+/* ══════ INIT ══════ */
+load();
+try{
+  if(!localStorage.getItem(HELP_SK)) setTimeout(openHelp, 400);
+}catch(e){}
+</script>
+</body>
+</html>
